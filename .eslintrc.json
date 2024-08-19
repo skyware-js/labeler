@@ -1,0 +1,19 @@
+{
+	"extends": ["plugin:@typescript-eslint/strict-type-checked"],
+	"plugins": ["@typescript-eslint"],
+	"parser": "@typescript-eslint/parser",
+	"parserOptions": {
+		"project": "./tsconfig.json"
+	},
+	"rules": {
+		"@typescript-eslint/no-explicit-any": "off",
+		"@typescript-eslint/no-misused-promises": "off",
+		"@typescript-eslint/no-unnecessary-condition": "off",
+		"@typescript-eslint/no-unsafe-assignment": "off",
+		"@typescript-eslint/restrict-plus-operands": "off",
+		"@typescript-eslint/restrict-template-expressions": "off",
+		"@typescript-eslint/unified-signatures": "off"
+	},
+	"ignorePatterns": ["dist", "node_modules"],
+	"root": true
+}

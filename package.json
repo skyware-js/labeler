@@ -1,0 +1,41 @@
+{
+	"name": "@skyware/labeler",
+	"type": "module",
+	"description": "A lightweight alternative to Ozone for operating an atproto labeler",
+	"version": "0.0.1",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"license": "MPL-2.0",
+	"repository": "https://github.com/skyware-js/labeler",
+	"homepage": "https://skyware.js.org/docs/labeler",
+	"keywords": [
+		"bluesky",
+		"labeler",
+		"atproto",
+		"skyware"
+	],
+	"scripts": {
+		"build": "tsc",
+		"lint": "eslint . --ext .ts",
+		"fmt": "dprint fmt",
+		"prepublish": "pnpm lint && pnpm fmt && pnpm build"
+	},
+	"devDependencies": {
+		"@atproto/api": "^0.13.1",
+		"@types/better-sqlite3": "^7.6.11",
+		"@types/express": "^4.17.21",
+		"@types/node": "^20.11.19",
+		"@typescript-eslint/eslint-plugin": "^6.7.4",
+		"@typescript-eslint/parser": "^6.7.4",
+		"dprint": "^0.41.0",
+		"eslint": "^8.50.0",
+		"typescript": "^5.2.2"
+	},
+	"files": [
+		"dist"
+	],
+	"dependencies": {
+		"better-sqlite3": "^11.1.2",
+		"express": "^4.19.2"
+	}
+}
