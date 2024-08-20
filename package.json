@@ -20,6 +20,10 @@
 		"fmt": "dprint fmt",
 		"prepublish": "pnpm lint && pnpm fmt && pnpm build"
 	},
+	"exports": {
+		".": "./dist/index.js",
+		"./scripts/*": "./dist/scripts/*.js"
+	},
 	"devDependencies": {
 		"@atproto/api": "^0.13.1",
 		"@types/better-sqlite3": "^7.6.11",
@@ -34,10 +38,12 @@
 		"typescript": "^5.2.2"
 	},
 	"dependencies": {
+		"@atproto/crypto": "^0.4.0",
 		"@atproto/xrpc-server": "^0.6.2",
 		"better-sqlite3": "^11.1.2",
 		"express": "^4.19.2",
-		"express-ws": "^5.0.2"
+		"express-ws": "^5.0.2",
+		"uint8arrays": "^5.1.0"
 	},
 	"files": [
 		"dist"
