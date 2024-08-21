@@ -1,5 +1,5 @@
 import { AtpAgent, ComAtprotoIdentitySignPlcOperation } from "@atproto/api";
-import { P256Keypair, Secp256k1Keypair } from "@atproto/crypto";
+import { Secp256k1Keypair } from "@atproto/crypto";
 import * as ui8 from "uint8arrays";
 import { loginAgentOrCredentials } from "./util.js";
 
@@ -23,10 +23,11 @@ export interface PlcSetupLabelerOptions {
 	/** An agent logged into the labeler account. You must provide either `password` or `agent`. */
 	agent?: AtpAgent;
 
-	/** You may choose to provide your own signing key to use for the labeler. */
+	/**
+	 * You may choose to provide your own hex-encoded secp256k1 signing key to use for the labeler.
+	 * Leave this empty to generate a new keypair.
+	 */
 	privateKey?: string | Uint8Array;
-	/** The algorithm of the provided private key. */
-	privateKeyAlgorithm?: "secp256k1" | "secp256r1";
 	/** Whether to overwrite the existing label signing key if one is already set. */
 	overwriteExistingKey?: boolean;
 }
@@ -53,18 +54,9 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		await agent.login({ identifier: options.did, password: options.password });
 	}
 
-	let keypair: Secp256k1Keypair | P256Keypair;
-	if (options.privateKey) {
-		if (options.privateKeyAlgorithm === "secp256r1") {
-			keypair = await P256Keypair.import(options.privateKey);
-		} else if (options.privateKeyAlgorithm === "secp256k1") {
-			keypair = await Secp256k1Keypair.import(options.privateKey);
-		} else {
-			throw new Error("Invalid private key algorithm.");
-		}
-	} else {
-		keypair = await Secp256k1Keypair.create({ exportable: true });
-	}
+	const keypair = options.privateKey
+		? await Secp256k1Keypair.import(options.privateKey)
+		: await Secp256k1Keypair.create({ exportable: true });
 
 	const keyDid = keypair.did();
 
