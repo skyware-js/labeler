@@ -22,7 +22,7 @@
 	},
 	"exports": {
 		".": "./dist/index.js",
-		"./scripts/*": "./dist/scripts/*.js"
+		"./scripts": "./dist/scripts/index.js"
 	},
 	"devDependencies": {
 		"@atproto/api": "^0.13.1",
