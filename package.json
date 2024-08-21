@@ -35,9 +35,10 @@
 		"@typescript-eslint/parser": "^6.7.4",
 		"dprint": "^0.41.0",
 		"eslint": "^8.50.0",
-		"typescript": "^5.2.2"
+		"typescript": "^5.5.4"
 	},
 	"dependencies": {
+		"@atcute/cbor": "^1.0.0",
 		"@atproto/crypto": "^0.4.0",
 		"@atproto/xrpc-server": "^0.6.2",
 		"better-sqlite3": "^11.1.2",
