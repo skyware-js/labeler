@@ -1,4 +1,3 @@
-import { encode as cborEncode } from "@atcute/cbor";
 import type { ComAtprotoLabelDefs } from "@atproto/api";
 import { Keypair, Secp256k1Keypair } from "@atproto/crypto";
 import { ErrorFrame, InvalidRequestError, MessageFrame, XRPCError } from "@atproto/xrpc-server";
@@ -8,9 +7,8 @@ import expressWs, { type Application, WebsocketRequestHandler } from "express-ws
 import { Server } from "node:http";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
-import { SignedLabel, StrictPartial } from "./util.js";
-
-const LABEL_VERSION = 1;
+import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
+import { SignedLabel } from "./util/types.js";
 
 export interface LabelerOptions {
 	did: string;
@@ -64,30 +62,20 @@ export class LabelerServer {
 		if (this.server?.listening) this.server?.close(callback);
 	}
 
-	async signLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
-		const toSign = this.formatLabel(label);
-		const bytes = cborEncode(toSign);
-		const sig = await this.signingKey.sign(bytes);
-		return { ...toSign, sig };
-	}
-
-	private formatLabel<T extends ComAtprotoLabelDefs.Label>(label: T): StrictPartial<T> {
-		const { src, uri, cid, val, neg, cts, exp } = label;
-		return {
-			ver: LABEL_VERSION,
-			src,
-			uri,
-			...(cid ? { cid } : {}),
-			val,
-			...(neg ? { neg } : {}),
-			cts,
-			...(exp ? { exp } : {}),
-		} as never;
+	async createLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
+		const signed = labelIsSigned(label) ? label : await signLabel(label, this.signingKey);
+		const stmt = this.db.prepare(`
+			INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
+		stmt.run(src, uri, cid, val, neg, cts, exp, sig);
+		return signed;
 	}
 
 	private async ensureSignedLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
-		if (!label.sig) {
-			const signed = await this.signLabel(label);
+		if (!labelIsSigned(label)) {
+			const signed = await signLabel(label, this.signingKey);
 			const stmt = this.db.prepare(`
 				UPDATE labels
 				SET sig = ?
@@ -96,7 +84,7 @@ export class LabelerServer {
 			if (!stmt.changes) throw new Error("Failed to update label with signature");
 			return signed;
 		}
-		return this.formatLabel(label) as ComAtprotoLabelDefs.Label & { sig: Uint8Array };
+		return formatLabel(label);
 	}
 
 	queryLabelsHandler: express.RequestHandler = async (req, res) => {
@@ -158,7 +146,7 @@ export class LabelerServer {
 		}
 	};
 
-	subscribeLabelsHandler: WebsocketRequestHandler = (ws, req) => {
+	subscribeLabelsHandler: WebsocketRequestHandler = async (ws, req) => {
 		const cursor = parseInt(req.params.cursor);
 
 		if (cursor && !Number.isNaN(cursor)) {
@@ -181,6 +169,7 @@ export class LabelerServer {
 			`);
 
 			for (const row of stmt.iterate(cursor)) {
+				await this.ensureSignedLabel(row);
 				const { id: seq, ...label } = row;
 				const frame = new MessageFrame({ seq, labels: [label] }, { type: "#labels" });
 				ws.send(frame.toBytes());
