@@ -40,6 +40,7 @@
 	"dependencies": {
 		"@atcute/cbor": "^1.0.0",
 		"@atproto/crypto": "^0.4.0",
+		"@atproto/identity": "^0.4.0",
 		"@atproto/xrpc-server": "^0.6.2",
 		"better-sqlite3": "^11.1.2",
 		"express": "^4.19.2",
