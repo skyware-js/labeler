@@ -23,36 +23,67 @@ import type { WebSocket } from "ws";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import { SignedLabel } from "./util/types.js";
 
+/**
+ * Options for the {@link LabelerServer} class.
+ */
 export interface LabelerOptions {
+	/** The DID of the labeler account. */
 	did: string;
+
+	/**
+	 * The private signing key used for the labeler.
+	 * If you don't have a key, generate and set one using {@link plcSetupLabeler}.
+	 */
 	signingKey: string;
+
+	/**
+	 * A function that returns whether a DID is authorized to create labels.
+	 * By default, only the labeler account is authorized.
+	 * @param did The DID to check.
+	 */
 	auth?: (did: string) => boolean | Promise<boolean>;
-	dbFile?: string;
+	/**
+	 * The path to the SQLite `.db` database file.
+	 * @default labels.db
+	 */
+	dbPath?: string;
 }
 
 export class LabelerServer {
+	/** The Express application instance. */
 	app: Application;
 
+	/** The HTTP server instance. */
 	server?: Server;
 
+	/** The SQLite database instance. */
 	db: SQLiteDatabase;
 
+	/** The DID of the labeler account. */
 	did: string;
 
+	/** A function that returns whether a DID is authorized to create labels. */
 	private auth: (did: string) => boolean | Promise<boolean>;
 
+	/** The signing key used for the labeler. */
 	private signingKey: Keypair;
 
+	/** The ID resolver instance. */
 	private idResolver = new IdResolver();
 
-	private subscriptions = new Set<WebSocket>();
+	/** Open WebSocket connections, mapped by request NSID. */
+	private connections = new Map<string, Set<WebSocket>>();
 
+	/**
+	 * Create a labeler server.
+	 * @param options Configuration options.
+	 */
 	constructor(options: LabelerOptions) {
 		this.did = options.did;
 		this.signingKey = new Secp256k1Keypair(ui8FromString(options.signingKey, "hex"), false);
 		this.auth = options.auth ?? ((did) => did === this.did);
 
-		this.db = new Database(options.dbFile ?? "labels.db");
+		this.db = new Database(options.dbPath ?? "labels.db");
 		this.db.pragma("journal_mode = WAL");
 		this.db.exec(`
 			CREATE TABLE IF NOT EXISTS labels (
@@ -74,14 +105,27 @@ export class LabelerServer {
 		this.app.post("/xrpc/tools.ozone.moderation.emitEvent", this.emitEventHandler);
 	}
 
+	/**
+	 * Start the server.
+	 * @param port The port to listen on.
+	 * @param callback A callback to run when the server is started.
+	 */
 	start(port = 443, callback?: () => void) {
 		this.server = this.app.listen(port, callback);
 	}
 
+	/**
+	 * Stop the server.
+	 * @param callback A callback to run when the server is stopped.
+	 */
 	stop(callback?: () => void) {
 		if (this.server?.listening) this.server?.close(callback);
 	}
 
+	/**
+	 * Create and insert a label into the database, emitting it to subscribers.
+	 * @param label The label to create.
+	 */
 	async createLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
 		const signed = labelIsSigned(label) ? label : await signLabel(label, this.signingKey);
 		const stmt = this.db.prepare(`
@@ -130,6 +174,10 @@ export class LabelerServer {
 		}
 	}
 
+	/**
+	 * Ensure a label is signed, updating if necessary.
+	 * @param label The label to ensure is signed.
+	 */
 	private async ensureSignedLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
 		if (!labelIsSigned(label)) {
 			const signed = await signLabel(label, this.signingKey);
@@ -144,12 +192,20 @@ export class LabelerServer {
 		return formatLabel(label);
 	}
 
+	/**
+	 * Emit a label to all subscribers.
+	 * @param label The label to emit.
+	 */
 	private async emitLabel(label: ComAtprotoLabelDefs.Label) {
 		const signed = await this.ensureSignedLabel(label);
 		const frame = new MessageFrame({ seq: label.id, labels: [signed] }, { type: "#labels" });
-		this.subscriptions.forEach((ws) => ws.send(frame.toBytes()));
+		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => { ws.send(frame.toBytes()); });
 	}
 
+	/**
+	 * Parse a user DID from an Authorization header JWT.
+	 * @param req The Express request object.
+	 */
 	private async parseAuthHeaderDid(req: express.Request): Promise<string> {
 		const authHeader = req.get("Authorization");
 		if (!authHeader) throw new AuthRequiredError("Authorization header is required");
@@ -170,6 +226,9 @@ export class LabelerServer {
 		return payload.iss;
 	}
 
+	/**
+	 * Handler for com.atproto.label.queryLabels.
+	 */
 	queryLabelsHandler: RequestHandler = async (req, res) => {
 		try {
 			const { uriPatterns, sources, limit: limitStr, cursor: cursorStr } = req.query as {
@@ -221,7 +280,7 @@ export class LabelerServer {
 			} else {
 				console.error(e);
 				res.status(500).json({
-					error: "InternalError",
+					error: "InternalServerError",
 					message: "An unknown error occurred",
 				});
 			}
@@ -229,6 +288,9 @@ export class LabelerServer {
 		}
 	};
 
+	/**
+	 * Handler for com.atproto.label.subscribeLabels.
+	 */
 	subscribeLabelsHandler: WebsocketRequestHandler = async (ws, req) => {
 		const cursor = parseInt(req.params.cursor);
 
@@ -251,21 +313,34 @@ export class LabelerServer {
 				ORDER BY id ASC
 			`);
 
-			for (const row of stmt.iterate(cursor)) {
-				await this.ensureSignedLabel(row);
-				const { id: seq, ...label } = row;
-				const frame = new MessageFrame({ seq, labels: [label] }, { type: "#labels" });
-				ws.send(frame.toBytes());
+			try {
+				for (const row of stmt.iterate(cursor)) {
+					await this.ensureSignedLabel(row);
+					const { id: seq, ...label } = row;
+					const frame = new MessageFrame({ seq, labels: [label] }, { type: "#labels" });
+					ws.send(frame.toBytes());
+				}
+			} catch (e) {
+				console.error(e);
+				const errorFrame = new ErrorFrame({
+					error: "InternalServerError",
+					message: "An unknown error occurred",
+				});
+				ws.send(errorFrame.toBytes());
+				ws.terminate();
 			}
 		}
 
-		this.subscriptions.add(ws);
+		this.addSubscription("com.atproto.label.subscribeLabels", ws);
 
 		ws.on("close", () => {
-			this.subscriptions.delete(ws);
+			this.removeSubscription("com.atproto.label.subscribeLabels", ws);
 		});
 	};
 
+	/**
+	 * Handler for tools.ozone.moderation.emitEvent.
+	 */
 	emitEventHandler: RequestHandler = async (req, res) => {
 		try {
 			const actorDid = await this.parseAuthHeaderDid(req);
@@ -313,10 +388,34 @@ export class LabelerServer {
 			} else {
 				console.error(e);
 				res.status(500).json({
-					error: "InternalError",
+					error: "InternalServerError",
 					message: "An unknown error occurred",
 				});
 			}
 		}
 	};
+
+	/**
+	 * Add a WebSocket connection to the list of subscribers for a given lexicon.
+	 * @param nsid The NSID of the lexicon to subscribe to.
+	 * @param ws The WebSocket connection to add.
+	 */
+	private addSubscription(nsid: string, ws: WebSocket) {
+		const subs = this.connections.get(nsid) ?? new Set();
+		subs.add(ws);
+		this.connections.set(nsid, subs);
+	}
+
+	/**
+	 * Remove a WebSocket connection from the list of subscribers for a given lexicon.
+	 * @param nsid The NSID of the lexicon to unsubscribe from.
+	 * @param ws The WebSocket connection to remove.
+	 */
+	private removeSubscription(nsid: string, ws: WebSocket) {
+		const subs = this.connections.get(nsid);
+		if (subs) {
+			subs.delete(ws);
+			if (!subs.size) this.connections.delete(nsid);
+		}
+	}
 }
