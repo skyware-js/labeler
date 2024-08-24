@@ -32,11 +32,30 @@ export interface PlcSetupLabelerOptions {
 	overwriteExistingKey?: boolean;
 }
 
+/** Options for the {@link plcClearLabeler} function. */
+export interface PlcClearLabelerOptions {
+	/**
+	 * The token to use to sign the PLC operation.
+	 * If you don't have a token, first call {@link plcRequestToken} to receive one via email.
+	 */
+	plcToken: string;
+
+	/** The URL of the PDS where the labeler account is located, if different from bsky.social. */
+	pds?: string;
+	/** The DID of the labeler account. */
+	did: string;
+	/** The password of the labeler account. You must provide either `password` or `agent`. */
+	password?: string;
+	/** An agent logged into the labeler account. You must provide either `password` or `agent`. */
+	agent?: AtpAgent;
+}
+
 /**
  * This function will update the labeler account's DID document to include the
  * provided labeler endpoint and signing key. If no private key is provided, a
  * new keypair will be generated, and the private key will be printed to the
  * console. This private key will be needed to sign any labels created.
+ * To set up a labeler, call this function followed by {@link declareLabeler}.
  * @param options Options for the function.
  */
 export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
@@ -114,6 +133,54 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		);
 		console.log("Signing key:", privateKey);
 	}
+}
+
+/**
+ * This function will remove the labeler endpoint and signing key from the labeler account's DID document.
+ * To restore a labeler to a regular account, call this function followed by {@link deleteLabelerDeclaration}.
+ * @param options Options for the function.
+ */
+export async function plcClearLabeler(options: PlcClearLabelerOptions) {
+	if (!options.agent && !options.password) {
+		throw new Error(
+			"Either a logged-in agent or a password must be provided for the labeler account.",
+		);
+	}
+
+	const agent = options.agent ?? new AtpAgent({ service: options.pds || "https://bsky.social" });
+	if (!agent.hasSession) {
+		if (!options.password) {
+			throw new Error("A password must be provided to log in to the labeler account.");
+		}
+		await agent.login({ identifier: options.did, password: options.password });
+	}
+	
+	const credentials = await agent.com.atproto.identity.getRecommendedDidCredentials();
+	if (!credentials.success) {
+		throw new Error("Failed to fetch DID document.");
+	}
+
+	if (
+		credentials.data.verificationMethods
+		&& "atproto_label" in credentials.data.verificationMethods
+	) {
+		delete credentials.data.verificationMethods.atproto_label;
+	}
+
+	if (
+		credentials.data.services
+		&& "atproto_label" in credentials.data.services
+		&& credentials.data.services["atproto_label"]
+	) {
+		delete credentials.data.services.atproto_label;
+	}
+
+	const plcOp = await agent.com.atproto.identity.signPlcOperation({
+		token: options.plcToken,
+		...credentials.data,
+	});
+
+	await agent.com.atproto.identity.submitPlcOperation({ operation: plcOp.data.operation });
 }
 
 /**

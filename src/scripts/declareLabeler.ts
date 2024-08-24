@@ -71,3 +71,24 @@ export async function getLabelerLabelDefinitions(
 	});
 	return policies.labelValueDefinitions;
 }
+
+/**
+ * Delete the labeler declaration for this account, removing all label definitions.
+ * @param credentials The credentials of the labeler account.
+ */
+export async function deleteLabelerDeclaration(
+	credentials: { pds?: string; identifier: string; password: string },
+): Promise<void>;
+/**
+ * Delete the labeler declaration for this account, removing all label definitions.
+ * @param agent The agent logged into the labeler account.
+ */
+export async function deleteLabelerDeclaration(
+	agent: AtpAgent,
+): Promise<void>;
+export async function deleteLabelerDeclaration(
+	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
+) {
+	const agent = await loginAgentOrCredentials(agentOrCredentials);
+	await agent.app.bsky.labeler.service.delete({ repo: agent.accountDid });
+}
