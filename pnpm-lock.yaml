@@ -11,6 +11,9 @@ importers:
       '@atcute/cbor':
         specifier: ^1.0.0
         version: 1.0.0
+      '@atproto/api':
+        specifier: ^0.13.1
+        version: 0.13.1
       '@atproto/crypto':
         specifier: ^0.4.0
         version: 0.4.0
@@ -29,13 +32,13 @@ importers:
       express-ws:
         specifier: ^5.0.2
         version: 5.0.2(express@4.19.2)
+      prompts:
+        specifier: ^2.4.2
+        version: 2.4.2
       uint8arrays:
         specifier: ^5.1.0
         version: 5.1.0
     devDependencies:
-      '@atproto/api':
-        specifier: ^0.13.1
-        version: 0.13.1
       '@types/better-sqlite3':
         specifier: ^7.6.11
         version: 7.6.11
@@ -48,12 +51,15 @@ importers:
       '@types/node':
         specifier: ^20.11.19
         version: 20.11.19
+      '@types/prompts':
+        specifier: ^2.4.9
+        version: 2.4.9
       '@types/ws':
         specifier: ^8.5.12
         version: 8.5.12
       '@typescript-eslint/eslint-plugin':
         specifier: ^6.7.4
-        version: 6.7.4(@typescript-eslint/parser@6.7.4)(eslint@8.50.0)(typescript@5.5.4)
+        version: 6.7.4(@typescript-eslint/parser@6.7.4(eslint@8.50.0)(typescript@5.5.4))(eslint@8.50.0)(typescript@5.5.4)
       '@typescript-eslint/parser':
         specifier: ^6.7.4
         version: 6.7.4(eslint@8.50.0)(typescript@5.5.4)
@@ -252,6 +258,9 @@ packages:
 
   '@types/node@20.11.19':
     resolution: {integrity: sha512-7xMnVEcZFu0DikYjWOlRq7NTPETrm7teqUT2WkQjrTIkEgUyyGdWsj/Zg8bEJt5TNklzbPD1X3fqfsHw3SpapQ==}
+
+  '@types/prompts@2.4.9':
+    resolution: {integrity: sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA==}
 
   '@types/qs@6.9.15':
     resolution: {integrity: sha512-uXHQKES6DQKKCLh441Xv/dwxOq1TVS3JPUMlEqoEglvlhR6Mxnlew/Xq/LRVHpLyk7iK3zODe1qYHIMltO7XGg==}
@@ -824,6 +833,10 @@ packages:
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
 
+  kleur@3.0.3:
+    resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
+    engines: {node: '>=6'}
+
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
@@ -1001,6 +1014,10 @@ packages:
     resolution: {integrity: sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==}
     engines: {node: '>= 0.6.0'}
 
+  prompts@2.4.2:
+    resolution: {integrity: sha512-NxNv/kLguCA7p3jE8oL2aEBsrJWgAakBpgmgK6lpPWV+WuOmY6r2/zbAVnP+T8bQlA0nzHXSJSJW0Hq7ylaD2Q==}
+    engines: {node: '>= 6'}
+
   proxy-addr@2.0.7:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
     engines: {node: '>= 0.10'}
@@ -1111,6 +1128,9 @@ packages:
 
   simple-get@4.0.1:
     resolution: {integrity: sha512-brv7p5WgH0jmQJr1ZDDfKDOSeWWg+OVypG99A/5vYGPqJ6pxiaHLy8nxtFjBA7oMa01ebA9gfh1uMCFqOuXxvA==}
+
+  sisteransi@1.0.5:
+    resolution: {integrity: sha512-bLGGlR1QxBcynn2d5YmDX4MGjlZvy2MRBDRNHLJ8VI6l6+9FUiyTFNJ0IveOSP0bcXgVDPRcfGqA0pjaqUpfVg==}
 
   slash@3.0.0:
     resolution: {integrity: sha512-g9Q1haeby36OSStwb4ntCGGGaKsaVSjQ68fBxoQcutl5fS1vuY18H3wSt3jFyFtrkx+Kz0V1G85A4MyAdDMi2Q==}
@@ -1496,6 +1516,11 @@ snapshots:
     dependencies:
       undici-types: 5.26.5
 
+  '@types/prompts@2.4.9':
+    dependencies:
+      '@types/node': 20.11.19
+      kleur: 3.0.3
+
   '@types/qs@6.9.15': {}
 
   '@types/range-parser@1.2.7': {}
@@ -1517,7 +1542,7 @@ snapshots:
     dependencies:
       '@types/node': 20.11.19
 
-  '@typescript-eslint/eslint-plugin@6.7.4(@typescript-eslint/parser@6.7.4)(eslint@8.50.0)(typescript@5.5.4)':
+  '@typescript-eslint/eslint-plugin@6.7.4(@typescript-eslint/parser@6.7.4(eslint@8.50.0)(typescript@5.5.4))(eslint@8.50.0)(typescript@5.5.4)':
     dependencies:
       '@eslint-community/regexpp': 4.10.0
       '@typescript-eslint/parser': 6.7.4(eslint@8.50.0)(typescript@5.5.4)
@@ -1532,6 +1557,7 @@ snapshots:
       natural-compare: 1.4.0
       semver: 7.6.0
       ts-api-utils: 1.2.1(typescript@5.5.4)
+    optionalDependencies:
       typescript: 5.5.4
     transitivePeerDependencies:
       - supports-color
@@ -1544,6 +1570,7 @@ snapshots:
       '@typescript-eslint/visitor-keys': 6.7.4
       debug: 4.3.4
       eslint: 8.50.0
+    optionalDependencies:
       typescript: 5.5.4
     transitivePeerDependencies:
       - supports-color
@@ -1560,6 +1587,7 @@ snapshots:
       debug: 4.3.4
       eslint: 8.50.0
       ts-api-utils: 1.2.1(typescript@5.5.4)
+    optionalDependencies:
       typescript: 5.5.4
     transitivePeerDependencies:
       - supports-color
@@ -1575,6 +1603,7 @@ snapshots:
       is-glob: 4.0.3
       semver: 7.6.0
       ts-api-utils: 1.2.1(typescript@5.5.4)
+    optionalDependencies:
       typescript: 5.5.4
     transitivePeerDependencies:
       - supports-color
@@ -2146,6 +2175,8 @@ snapshots:
     dependencies:
       json-buffer: 3.0.1
 
+  kleur@3.0.3: {}
+
   levn@0.4.1:
     dependencies:
       prelude-ls: 1.2.1
@@ -2306,6 +2337,11 @@ snapshots:
 
   process@0.11.10: {}
 
+  prompts@2.4.2:
+    dependencies:
+      kleur: 3.0.3
+      sisteransi: 1.0.5
+
   proxy-addr@2.0.7:
     dependencies:
       forwarded: 0.2.0
@@ -2440,6 +2476,8 @@ snapshots:
       decompress-response: 6.0.0
       once: 1.4.0
       simple-concat: 1.0.1
+
+  sisteransi@1.0.5: {}
 
   slash@3.0.0: {}
 
