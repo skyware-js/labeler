@@ -2,25 +2,19 @@ import { AtpAgent } from "@atproto/api";
 
 export interface LoginCredentials {
 	/** The URL of the PDS where the account is located. Defaults to "https://bsky.social". */
-	pds?: string;
+	pds?: string | undefined;
 	/** The account identifier; a DID or handle. */
 	identifier: string;
 	/** The account password. */
 	password: string;
 }
 
-export async function loginAgentOrCredentials(
-	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
-) {
-	const agent = agentOrCredentials instanceof AtpAgent
-		? agentOrCredentials
-		: new AtpAgent({ service: agentOrCredentials.pds || "https://bsky.social" });
-	if (!agent.hasSession) {
-		if (!(agentOrCredentials instanceof AtpAgent)) {
-			await agent.login(agentOrCredentials);
-		} else {
-			throw new Error("A password must be provided to log in to the labeler account.");
-		}
+export async function loginAgent({ pds, ...credentials }: LoginCredentials) {
+	const agent = new AtpAgent({ service: pds || "https://bsky.social" });
+	try {
+		await agent.login(credentials);
+	} catch (e) {
+		throw new Error("Failed to log in to the account.", { cause: e });
 	}
 	return agent;
 }

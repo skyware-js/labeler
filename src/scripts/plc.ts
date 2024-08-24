@@ -1,7 +1,7 @@
-import { AtpAgent, ComAtprotoIdentitySignPlcOperation } from "@atproto/api";
+import { ComAtprotoIdentitySignPlcOperation } from "@atproto/api";
 import { Secp256k1Keypair } from "@atproto/crypto";
 import * as ui8 from "uint8arrays";
-import { loginAgentOrCredentials } from "./util.js";
+import { loginAgent, LoginCredentials } from "./util.js";
 
 /** Options for the {@link plcSetupLabeler} function. */
 export interface PlcSetupLabelerOptions {
@@ -18,10 +18,8 @@ export interface PlcSetupLabelerOptions {
 	pds?: string;
 	/** The DID of the labeler account. */
 	did: string;
-	/** The password of the labeler account. You must provide either `password` or `agent`. */
-	password?: string;
-	/** An agent logged into the labeler account. You must provide either `password` or `agent`. */
-	agent?: AtpAgent;
+	/** The password of the labeler account. Cannot be an app password. */
+	password: string;
 
 	/**
 	 * You may choose to provide your own hex-encoded secp256k1 signing key to use for the labeler.
@@ -44,10 +42,8 @@ export interface PlcClearLabelerOptions {
 	pds?: string;
 	/** The DID of the labeler account. */
 	did: string;
-	/** The password of the labeler account. You must provide either `password` or `agent`. */
-	password?: string;
-	/** An agent logged into the labeler account. You must provide either `password` or `agent`. */
-	agent?: AtpAgent;
+	/** The password to the labeler account. Cannot be an app password. */
+	password: string;
 }
 
 /**
@@ -59,19 +55,11 @@ export interface PlcClearLabelerOptions {
  * @param options Options for the function.
  */
 export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
-	if (!options.agent && !options.password) {
-		throw new Error(
-			"Either a logged-in agent or a password must be provided for the labeler account.",
-		);
-	}
-
-	const agent = options.agent ?? new AtpAgent({ service: options.pds || "https://bsky.social" });
-	if (!agent.hasSession) {
-		if (!options.password) {
-			throw new Error("A password must be provided to log in to the labeler account.");
-		}
-		await agent.login({ identifier: options.did, password: options.password });
-	}
+	const agent = await loginAgent({
+		pds: options.pds,
+		identifier: options.did,
+		password: options.password,
+	});
 
 	const keypair = options.privateKey
 		? await Secp256k1Keypair.import(options.privateKey)
@@ -129,7 +117,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		console.log(
 			"This is your labeler's signing key. It will be needed to sign any labels you create.",
 			"You will not be able to retrieve this key again, so make sure to save it somewhere safe.",
-			"If you lose this key, you can call this function again without passing a private key to generate a new one.",
+			"If you lose this key, you can run this again to generate a new one.",
 		);
 		console.log("Signing key:", privateKey);
 	}
@@ -141,19 +129,11 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
  * @param options Options for the function.
  */
 export async function plcClearLabeler(options: PlcClearLabelerOptions) {
-	if (!options.agent && !options.password) {
-		throw new Error(
-			"Either a logged-in agent or a password must be provided for the labeler account.",
-		);
-	}
-
-	const agent = options.agent ?? new AtpAgent({ service: options.pds || "https://bsky.social" });
-	if (!agent.hasSession) {
-		if (!options.password) {
-			throw new Error("A password must be provided to log in to the labeler account.");
-		}
-		await agent.login({ identifier: options.did, password: options.password });
-	}
+	const agent = await loginAgent({
+		pds: options.pds,
+		identifier: options.did,
+		password: options.password,
+	});
 
 	const credentials = await agent.com.atproto.identity.getRecommendedDidCredentials();
 	if (!credentials.success) {
@@ -188,18 +168,7 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
  * associated with the labeler account.
  * @param credentials The credentials of the labeler account.
  */
-export async function plcRequestToken(
-	credentials: { pds?: string; identifier: string; password: string },
-): Promise<void>;
-/**
- * Request a PLC token, needed for {@link plcSetupLabeler}. The token will be sent to the email
- * associated with the labeler account.
- * @param agent An agent logged into the labeler account.
- */
-export async function plcRequestToken(agent: AtpAgent): Promise<void>;
-export async function plcRequestToken(
-	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
-) {
-	const agent = await loginAgentOrCredentials(agentOrCredentials);
+export async function plcRequestToken(credentials: LoginCredentials): Promise<void> {
+	const agent = await loginAgent(credentials);
 	await agent.com.atproto.identity.requestPlcOperationSignature();
 }

@@ -1,5 +1,5 @@
-import type { AtpAgent, ComAtprotoLabelDefs } from "@atproto/api";
-import { loginAgentOrCredentials } from "./util.js";
+import { AtpAgent, type ComAtprotoLabelDefs } from "@atproto/api";
+import { loginAgent, LoginCredentials } from "./util.js";
 
 /**
  * Declare the labels this labeler will apply. Necessary for users to be able to configure what they see.
@@ -8,31 +8,15 @@ import { loginAgentOrCredentials } from "./util.js";
  * @param overwriteExisting Whether to overwrite the existing label definitions if they already exist.
  */
 export async function declareLabeler(
-	credentials: { pds?: string; identifier: string; password: string },
+	credentials: LoginCredentials,
 	labelDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition>,
 	overwriteExisting?: boolean,
-): Promise<void>;
-/**
- * Declare the labels this labeler will apply. Necessary for users to be able to configure what they see.
- * @param agent The agent logged into the labeler account.
- * @param labelDefinitions The label definitions to declare. You can learn about the definition format [here](https://docs.bsky.app/docs/advanced-guides/moderation#custom-label-values).
- * @param overwriteExisting Whether to overwrite the existing label definitions if they already exist.
- */
-export async function declareLabeler(
-	agent: AtpAgent,
-	labelDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition>,
-	overwriteExisting?: boolean,
-): Promise<void>;
-export async function declareLabeler(
-	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
-	labelDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition>,
-	overwriteExisting?: boolean,
-) {
-	const agent = await loginAgentOrCredentials(agentOrCredentials);
+): Promise<void> {
+	const agent = await loginAgent(credentials);
 	const labelValues = labelDefinitions.map(({ identifier }) => identifier);
 
-	const existing = await getLabelerLabelDefinitions(agent);
-	if (existing?.length && !overwriteExisting) {
+	const existing = await getLabelerLabelDefinitions(credentials);
+	if (existing.length && !overwriteExisting) {
 		if (overwriteExisting === false) return;
 		throw new Error(
 			"Label definitions already exist. Use `overwriteExisting: true` to update them, or `overwriteExisting: false` to silence this error.",
@@ -47,46 +31,27 @@ export async function declareLabeler(
 
 /**
  * Get the label definitions currently declared by the labeler.
- * @param credentials The credentials of the labeler account.
+ * @param agentOrCredentials An agent logged into the labeler account, or credentials to the labeler account.
  * @returns The label definitions.
  */
 export async function getLabelerLabelDefinitions(
-	credentials: { pds?: string; identifier: string; password: string },
-): Promise<Array<ComAtprotoLabelDefs.LabelValueDefinition>>;
-/**
- * Get the label definitions currently declared by the labeler.
- * @param agent The agent logged into the labeler account.
- * @returns The label definitions.
- */
-export async function getLabelerLabelDefinitions(
-	agent: AtpAgent,
-): Promise<Array<ComAtprotoLabelDefs.LabelValueDefinition>>;
-export async function getLabelerLabelDefinitions(
-	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
-) {
-	const agent = await loginAgentOrCredentials(agentOrCredentials);
+	agentOrCredentials: AtpAgent | LoginCredentials,
+): Promise<Array<ComAtprotoLabelDefs.LabelValueDefinition>> {
+	const agent = agentOrCredentials instanceof AtpAgent
+		? agentOrCredentials
+		: await loginAgent(agentOrCredentials);
 	const { value: { policies } } = await agent.app.bsky.labeler.service.get({
 		rkey: "self",
 		repo: agent.accountDid,
 	});
-	return policies.labelValueDefinitions;
+	return policies.labelValueDefinitions || [];
 }
 
 /**
  * Delete the labeler declaration for this account, removing all label definitions.
  * @param credentials The credentials of the labeler account.
  */
-export async function deleteLabelerDeclaration(
-	credentials: { pds?: string; identifier: string; password: string },
-): Promise<void>;
-/**
- * Delete the labeler declaration for this account, removing all label definitions.
- * @param agent The agent logged into the labeler account.
- */
-export async function deleteLabelerDeclaration(agent: AtpAgent): Promise<void>;
-export async function deleteLabelerDeclaration(
-	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
-) {
-	const agent = await loginAgentOrCredentials(agentOrCredentials);
+export async function deleteLabelerDeclaration(credentials: LoginCredentials): Promise<void> {
+	const agent = await loginAgent(credentials);
 	await agent.app.bsky.labeler.service.delete({ repo: agent.accountDid });
 }
