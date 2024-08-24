@@ -1,4 +1,4 @@
-import { AtpAgent, ComAtprotoLabelDefs } from "@atproto/api";
+import type { AtpAgent, ComAtprotoLabelDefs } from "@atproto/api";
 import { loginAgentOrCredentials } from "./util.js";
 
 /**
@@ -83,9 +83,7 @@ export async function deleteLabelerDeclaration(
  * Delete the labeler declaration for this account, removing all label definitions.
  * @param agent The agent logged into the labeler account.
  */
-export async function deleteLabelerDeclaration(
-	agent: AtpAgent,
-): Promise<void>;
+export async function deleteLabelerDeclaration(agent: AtpAgent): Promise<void>;
 export async function deleteLabelerDeclaration(
 	agentOrCredentials: AtpAgent | { pds?: string; identifier: string; password: string },
 ) {

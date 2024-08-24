@@ -199,7 +199,9 @@ export class LabelerServer {
 	private async emitLabel(label: ComAtprotoLabelDefs.Label) {
 		const signed = await this.ensureSignedLabel(label);
 		const frame = new MessageFrame({ seq: label.id, labels: [signed] }, { type: "#labels" });
-		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => { ws.send(frame.toBytes()); });
+		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => {
+			ws.send(frame.toBytes());
+		});
 	}
 
 	/**

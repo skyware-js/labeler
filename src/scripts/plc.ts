@@ -154,7 +154,7 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
 		}
 		await agent.login({ identifier: options.did, password: options.password });
 	}
-	
+
 	const credentials = await agent.com.atproto.identity.getRecommendedDidCredentials();
 	if (!credentials.success) {
 		throw new Error("Failed to fetch DID document.");
