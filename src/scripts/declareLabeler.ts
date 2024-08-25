@@ -25,7 +25,7 @@ export async function declareLabeler(
 
 	await agent.app.bsky.labeler.service.create({ repo: agent.accountDid }, {
 		policies: { labelValues, labelValueDefinitions: labelDefinitions },
-		createdAt: new Date().toUTCString(),
+		createdAt: new Date().toISOString(),
 	});
 }
 
@@ -43,8 +43,8 @@ export async function getLabelerLabelDefinitions(
 	const { value: { policies } } = await agent.app.bsky.labeler.service.get({
 		rkey: "self",
 		repo: agent.accountDid,
-	});
-	return policies.labelValueDefinitions || [];
+	}).catch(() => ({ value: { policies: null } }));
+	return policies?.labelValueDefinitions ?? [];
 }
 
 /**
@@ -53,5 +53,5 @@ export async function getLabelerLabelDefinitions(
  */
 export async function deleteLabelerDeclaration(credentials: LoginCredentials): Promise<void> {
 	const agent = await loginAgent(credentials);
-	await agent.app.bsky.labeler.service.delete({ repo: agent.accountDid });
+	return agent.app.bsky.labeler.service.delete({ repo: agent.accountDid }).catch(() => {});
 }
