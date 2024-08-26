@@ -233,44 +233,54 @@ export class LabelerServer {
 	 */
 	queryLabelsHandler: RequestHandler = async (req, res) => {
 		try {
-			const { uriPatterns, sources, limit: limitStr, cursor: cursorStr } = req.query as {
+			const {
+				uriPatterns = [],
+				sources = [],
+				limit: limitStr = "50",
+				cursor: cursorStr = "0",
+			} = req.query as {
 				uriPatterns?: Array<string>;
 				sources?: Array<string>;
 				limit?: string;
 				cursor?: string;
 			};
 
-			const cursor = cursorStr ? parseInt(cursorStr, 10) : undefined;
-			if (cursor && Number.isNaN(cursor)) {
+			const cursor = parseInt(cursorStr, 10);
+			if (cursor !== undefined && Number.isNaN(cursor)) {
 				throw new InvalidRequestError("Cursor must be an integer");
 			}
 
-			const limit = parseInt(limitStr ?? "50", 10);
+			const limit = parseInt(limitStr, 10);
 			if (Number.isNaN(limit) || limit < 1 || limit > 250) {
 				throw new InvalidRequestError("Limit must be an integer between 1 and 250");
 			}
 
-			const patterns = uriPatterns?.includes("*")
-				? undefined
-				: uriPatterns?.map((pattern) => {
-					if (pattern.indexOf("*") !== pattern.length - 1) {
-						throw new InvalidRequestError(
-							"Only trailing wildcards are supported in uriPatterns",
-						);
-					}
-					return pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_").slice(0, -1) + "%";
-				});
+			const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
+				if (pattern.indexOf("*") !== pattern.length - 1) {
+					throw new InvalidRequestError(
+						"Only trailing wildcards are supported in uriPatterns",
+					);
+				}
+				return pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_").slice(0, -1) + "%";
+			});
 
 			const stmt = this.db.prepare<unknown[], ComAtprotoLabelDefs.Label>(`
 			SELECT * FROM labels
-			${patterns?.length ? patterns.map(() => "WHERE uri LIKE ?").join(" OR ") : ""}
-			${sources?.length ? "AND src IN (?)" : ""}
+			WHERE 1 = 1
+			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
+			${sources.length ? "AND src IN (?)" : ""}
 			${cursor ? "AND id > ?" : ""}
 			ORDER BY id ASC
 			LIMIT ?
 		`);
 
-			const rows = stmt.all([...(patterns ?? []), sources ?? [], cursor ?? 0, limit]);
+			const params = [];
+			if (patterns.length) params.push(...patterns);
+			if (sources.length) params.push(sources);
+			if (cursor) params.push(cursor);
+			params.push(limit);
+
+			const rows = stmt.all(params);
 
 			const labels = await Promise.all(rows.map((row) => this.ensureSignedLabel(row)));
 			const nextCursor = rows[rows.length - 1]?.id ?? 0;
@@ -286,7 +296,6 @@ export class LabelerServer {
 					message: "An unknown error occurred",
 				});
 			}
-			return;
 		}
 	};
 
