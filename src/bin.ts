@@ -1,33 +1,27 @@
 #!/usr/bin/env node
 import { ComAtprotoLabelDefs } from "@atproto/api";
+import { LabelValueDefinition } from "@atproto/api/dist/client/types/com/atproto/label/defs.js";
 import { IdResolver } from "@atproto/identity";
 import prompt from "prompts";
 import {
 	declareLabeler,
 	deleteLabelerDeclaration,
+	getLabelerLabelDefinitions,
 	plcClearLabeler,
 	plcRequestToken,
 	plcSetupLabeler,
+	setLabelerLabelDefinitions,
 } from "./scripts/index.js";
 
 const args = process.argv.slice(2);
-const [command] = args;
+const [command, subcommand] = args;
 
 const idResolver = new IdResolver();
 
 if (command === "create" || command === "delete") {
-	const did = await promptAndResolveDidOrHandle();
+	const { did, password, pds } = await promptAuthInfo();
 
-	const { password, pds, endpoint, privateKey } = await prompt([{
-		type: "password",
-		name: "password",
-		message: "Account password (cannot be an app password):",
-	}, {
-		type: "text",
-		name: "pds",
-		message: "URL of the PDS where the account is located:",
-		initial: "https://bsky.social",
-	}, {
+	const { endpoint, privateKey } = await prompt([{
 		type: command === "create" ? "text" : undefined,
 		name: "endpoint",
 		message: "URL where the labeler will be hosted:",
@@ -71,7 +65,13 @@ if (command === "create" || command === "delete") {
 				"Next, you will need to define a name, description, and settings for each of the labels you want this labeler to apply.",
 			);
 			const labelDefinitions = await promptLabelDefinitions();
-			await declareLabeler({ identifier: did, password, pds }, labelDefinitions, true);
+			if (labelDefinitions.length) {
+				await declareLabeler({ identifier: did, password, pds }, labelDefinitions, true);
+			} else {
+				console.log(
+					"No labels were defined. You can use the `label add` command later to define new labels.",
+				);
+			}
 
 			console.log("Labeler setup complete!");
 		} else {
@@ -82,14 +82,51 @@ if (command === "create" || command === "delete") {
 	} catch (error) {
 		console.error("Error setting up labeler:", error);
 	}
+} else if (command === "label" && (subcommand === "add" || subcommand === "delete")) {
+	const { did, password, pds } = await promptAuthInfo();
+	const labelDefinitions = await getLabelerLabelDefinitions({ identifier: did, password, pds })
+		?? [];
+
+	if (subcommand === "add") {
+		console.log(
+			"Now define a name, description, and settings for each of the labels you want to add.",
+		);
+		const newDefinitions = await promptLabelDefinitions();
+		if (newDefinitions.length) {
+			await setLabelerLabelDefinitions({ identifier: did, password, pds }, [
+				...labelDefinitions,
+				...newDefinitions,
+			]);
+		}
+	} else {
+		const { identifiers } = await prompt({
+			type: "multiselect",
+			name: "identifiers",
+			message: "Select the labels to remove",
+			min: 1,
+			choices: labelDefinitions.map((def) => ({
+				title: def.locales[0].name,
+				value: def.identifier,
+			})),
+		}, { onCancel: () => process.exit(1) });
+
+		await setLabelerLabelDefinitions(
+			{ identifier: did, password, pds },
+			labelDefinitions.filter((def) => !identifiers.includes(def.identifier)),
+		);
+
+		console.log("Deleted label(s):", identifiers.join(", "));
+	}
 } else {
 	console.log("Usage: npx @skyware/labeler [command]");
 	console.log("Commands:");
 	console.log("  create - Initialize an account as a labeler.");
 	console.log("  delete - Restore a labeler account to normal.");
+	console.log("  label add - Add new label declarations to a labeler account.");
+	console.log("  label delete - Remove label declarations from a labeler account.");
 }
 
-async function promptAndResolveDidOrHandle() {
+async function promptAuthInfo() {
 	let did: string | undefined;
 	while (!did) {
 		const { did: didOrHandle } = await prompt({
@@ -99,7 +136,7 @@ async function promptAndResolveDidOrHandle() {
 			validate: (value) =>
 				value.startsWith("did:") || value.includes(".") || "Invalid DID or handle.",
 			format: (value) => value.startsWith("@") ? value.slice(1) : value,
-		});
+		}, { onCancel: () => process.exit(1) });
 		if (!didOrHandle) continue;
 		did = didOrHandle.startsWith("did:")
 			? didOrHandle
@@ -108,7 +145,20 @@ async function promptAndResolveDidOrHandle() {
 			console.log(`Could not resolve "${didOrHandle}" to a valid account. Please try again.`);
 		}
 	}
-	return did;
+
+	const { password, pds } = await prompt([{
+		type: "password",
+		name: "password",
+		message: "Account password (cannot be an app password):",
+	}, {
+		type: "text",
+		name: "pds",
+		message: "URL of the PDS where the account is located:",
+		initial: "https://bsky.social",
+		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+	}], { onCancel: () => process.exit(1) });
+
+	return { did, password, pds };
 }
 
 async function confirm(message: string) {
@@ -119,29 +169,19 @@ async function confirm(message: string) {
 	}
 }
 
-async function promptLabelDefinitions() {
-	const definitions: Array<ComAtprotoLabelDefs.LabelValueDefinition> = [];
-	let addAnother = true;
-	while (addAnother) {
-		console.log("Enter the details for the next label you would like this labeler to apply.");
-		console.log("Press Esc or Ctrl+C to exit at any time with the labels defined so far.");
-		const {
-			identifier,
-			name,
-			description,
-			adultOnly,
-			severity,
-			blurs,
-			defaultSetting,
-			addAnother: _addAnother,
-		} = await prompt([{
+async function promptLabelDefinition(
+	existing?: Array<string>,
+): Promise<LabelValueDefinition | null> {
+	let canceled = false;
+	const { identifier, name, description, adultOnly, severity, blurs, defaultSetting } =
+		await prompt([{
 			type: "text",
 			name: "identifier",
 			message: "Identifier (non-user-facing, must be unique, 100 characters max):",
 			validate: (value) => {
 				if (!value) return "Required.";
 				if (value.length > 100) return "Must be <= 100 characters.";
-				if (definitions.some((d) => d.identifier === value)) return "Must be unique.";
+				if (existing?.some((id) => id === value)) return "Must be unique.";
 				if (/[^a-z-]/.test(value)) return "Must be lowercase letters and hyphens only.";
 				return true;
 			},
@@ -192,22 +232,41 @@ async function promptLabelDefinitions() {
 				},
 				{ title: "Hide", description: "(hide labeled content from feed)", value: "hide" },
 			],
-		}, {
-			type: "confirm",
-			name: "addAnother",
-			message: "Add another label definition?",
-			initial: true,
-		}]);
-		addAnother = _addAnother;
+		}], {
+			onCancel: () => {
+				canceled = true;
+			},
+		});
 
-		definitions.push({
+	return canceled
+		? null
+		: {
 			identifier,
 			adultOnly,
 			severity,
 			blurs,
 			defaultSetting,
 			locales: [{ lang: "en", name, description }],
-		});
+		};
+}
+
+async function promptLabelDefinitions() {
+	const definitions: Array<ComAtprotoLabelDefs.LabelValueDefinition> = [];
+	let addAnother = true;
+	while (addAnother) {
+		console.log("Enter the details for the next label you would like this labeler to apply.");
+		console.log("Press Esc or Ctrl+C to exit at any time with the labels defined so far.");
+
+		const definition = await promptLabelDefinition(definitions.map((d) => d.identifier));
+		if (!definition) break;
+		definitions.push(definition);
+
+		({ addAnother } = await prompt({
+			type: "confirm",
+			name: "addAnother",
+			message: "Add another label definition?",
+			initial: true,
+		}));
 	}
 
 	return definitions;
