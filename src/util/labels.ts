@@ -5,7 +5,9 @@ import type { SignedLabel, StrictPartial } from "./types.js";
 
 const LABEL_VERSION = 1;
 
-export function formatLabel<T extends ComAtprotoLabelDefs.Label>(label: T): StrictPartial<T> {
+export function formatLabel(
+	label: ComAtprotoLabelDefs.Label,
+): StrictPartial<ComAtprotoLabelDefs.Label> {
 	const { src, uri, cid, val, neg, cts, exp } = label;
 	return {
 		ver: LABEL_VERSION,
@@ -13,7 +15,7 @@ export function formatLabel<T extends ComAtprotoLabelDefs.Label>(label: T): Stri
 		uri,
 		...(cid ? { cid } : {}),
 		val,
-		...(!!neg ? { neg } : {}),
+		neg,
 		cts,
 		...(exp ? { exp } : {}),
 	} as never;

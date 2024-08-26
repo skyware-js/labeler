@@ -90,9 +90,9 @@ export class LabelerServer {
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				src TEXT NOT NULL,
 				uri TEXT NOT NULL,
-				cid TEXT NOT NULL,
+				cid TEXT,
 				val TEXT NOT NULL,
-				neg BOOLEAN NOT NULL,
+				neg BOOLEAN DEFAULT FALSE,
 				cts DATETIME NOT NULL,
 				exp DATETIME,
 				sig BLOB
@@ -135,7 +135,7 @@ export class LabelerServer {
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
 		const result = stmt.run(src, uri, cid, val, neg, cts, exp, sig);
 		if (!result.changes) throw new Error("Failed to insert label");
-		await this.emitLabel(signed);
+		this.emitLabel(signed);
 		return signed;
 	}
 
@@ -175,30 +175,13 @@ export class LabelerServer {
 	}
 
 	/**
-	 * Ensure a label is signed, updating if necessary.
-	 * @param label The label to ensure is signed.
-	 */
-	private async ensureSignedLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
-		if (!labelIsSigned(label)) {
-			const signed = await signLabel(label, this.signingKey);
-			const stmt = this.db.prepare(`
-				UPDATE labels
-				SET sig = ?
-				WHERE id = ?
-			`).run(signed.sig, label.id);
-			if (!stmt.changes) throw new Error("Failed to update label with signature");
-			return signed;
-		}
-		return formatLabel(label);
-	}
-
-	/**
 	 * Emit a label to all subscribers.
 	 * @param label The label to emit.
 	 */
-	private async emitLabel(label: ComAtprotoLabelDefs.Label) {
-		const signed = await this.ensureSignedLabel(label);
-		const frame = new MessageFrame({ seq: label.id, labels: [signed] }, { type: "#labels" });
+	private emitLabel({ id, ...label }: ComAtprotoLabelDefs.Label) {
+		const frame = new MessageFrame({ seq: id, labels: [formatLabel(label)] }, {
+			type: "#labels",
+		});
 		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => {
 			ws.send(frame.toBytes());
 		});
@@ -231,7 +214,7 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.queryLabels.
 	 */
-	queryLabelsHandler: RequestHandler = async (req, res) => {
+	queryLabelsHandler: RequestHandler = (req, res) => {
 		try {
 			const {
 				uriPatterns = [],
@@ -281,8 +264,8 @@ export class LabelerServer {
 			params.push(limit);
 
 			const rows = stmt.all(params);
+			const labels = rows.map(formatLabel);
 
-			const labels = await Promise.all(rows.map((row) => this.ensureSignedLabel(row)));
 			const nextCursor = rows[rows.length - 1]?.id ?? 0;
 
 			res.json({ cursor: nextCursor, labels });
@@ -302,7 +285,7 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.subscribeLabels.
 	 */
-	subscribeLabelsHandler: WebsocketRequestHandler = async (ws, req) => {
+	subscribeLabelsHandler: WebsocketRequestHandler = (ws, req) => {
 		const cursor = parseInt(req.params.cursor);
 
 		if (cursor && !Number.isNaN(cursor)) {
@@ -326,9 +309,10 @@ export class LabelerServer {
 
 			try {
 				for (const row of stmt.iterate(cursor)) {
-					await this.ensureSignedLabel(row);
 					const { id: seq, ...label } = row;
-					const frame = new MessageFrame({ seq, labels: [label] }, { type: "#labels" });
+					const frame = new MessageFrame({ seq, labels: [formatLabel(label)] }, {
+						type: "#labels",
+					});
 					ws.send(frame.toBytes());
 				}
 			} catch (e) {
