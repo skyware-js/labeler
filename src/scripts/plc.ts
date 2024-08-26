@@ -53,6 +53,7 @@ export interface PlcClearLabelerOptions {
  * console. This private key will be needed to sign any labels created.
  * To set up a labeler, call this function followed by {@link declareLabeler}.
  * @param options Options for the function.
+ * @returns The PLC operation that was submitted.
  */
 export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	const agent = await loginAgent({
@@ -121,6 +122,8 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		);
 		console.log("Signing key:", privateKey);
 	}
+
+	return operation;
 }
 
 /**

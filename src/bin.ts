@@ -18,7 +18,7 @@ const idResolver = new IdResolver();
 if (command === "create" || command === "delete") {
 	const did = await promptAndResolveDidOrHandle();
 
-	const { password, pds, endpoint } = await prompt([{
+	const { password, pds, endpoint, privateKey } = await prompt([{
 		type: "password",
 		name: "password",
 		message: "Account password (cannot be an app password):",
@@ -32,6 +32,11 @@ if (command === "create" || command === "delete") {
 		name: "endpoint",
 		message: "URL where the labeler will be hosted:",
 		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+	}, {
+		type: "text",
+		name: "privateKey",
+		message: "Enter a hex-encoded signing key to use, or leave blank to generate a new one:",
+		validate: (value) => !value || /^[0-9a-f]*$/.test(value) || "Must be a hex-encoded string.",
 	}], { onCancel: () => process.exit(1) });
 
 	await plcRequestToken({ identifier: did, password, pds });
@@ -44,11 +49,23 @@ if (command === "create" || command === "delete") {
 
 	try {
 		if (command === "create") {
-			await plcSetupLabeler({ did, password, pds, plcToken, endpoint });
+			const operation = await plcSetupLabeler({
+				did,
+				password,
+				pds,
+				plcToken,
+				endpoint,
+				privateKey,
+				overwriteExistingKey: true,
+			});
 
-			await confirm(
-				"Have you saved the signing key and are you ready to begin defining labels?",
-			);
+			// If a new key was generated and a verification method was added,
+			// plcSetupLabeler logged the private key to the console.
+			if (!privateKey && operation?.verificationMethods) {
+				await confirm(
+					"Have you saved the signing key and are you ready to begin defining labels?",
+				);
+			}
 
 			console.log(
 				"Next, you will need to define a name, description, and settings for each of the labels you want this labeler to apply.",
