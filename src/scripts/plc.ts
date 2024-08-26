@@ -89,15 +89,15 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 
 	if (
 		!credentials.data.services
-		|| !("atproto_label" in credentials.data.services)
-		|| !credentials.data.services["atproto_label"]
-		|| typeof credentials.data.services["atproto_label"] !== "object"
-		|| !("endpoint" in credentials.data.services["atproto_label"])
-		|| credentials.data.services["atproto_label"].endpoint !== options.endpoint
+		|| !("atproto_labeler" in credentials.data.services)
+		|| !credentials.data.services["atproto_labeler"]
+		|| typeof credentials.data.services["atproto_labeler"] !== "object"
+		|| !("endpoint" in credentials.data.services["atproto_labeler"])
+		|| credentials.data.services["atproto_labeler"].endpoint !== options.endpoint
 	) {
 		operation.services = {
 			...(credentials.data.services || {}),
-			atproto_label: { type: "AtprotoLabeler", endpoint: options.endpoint },
+			atproto_labeler: { type: "AtprotoLabeler", endpoint: options.endpoint },
 		};
 	}
 
@@ -149,10 +149,10 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
 
 	if (
 		credentials.data.services
-		&& "atproto_label" in credentials.data.services
-		&& credentials.data.services["atproto_label"]
+		&& "atproto_labeler" in credentials.data.services
+		&& credentials.data.services["atproto_labeler"]
 	) {
-		delete credentials.data.services.atproto_label;
+		delete credentials.data.services.atproto_labeler;
 	}
 
 	const plcOp = await agent.com.atproto.identity.signPlcOperation({
