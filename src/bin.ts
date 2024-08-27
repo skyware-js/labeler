@@ -18,11 +18,11 @@ const [command, subcommand] = args;
 
 const idResolver = new IdResolver();
 
-if (command === "create" || command === "delete") {
+if (command === "setup" || command === "clear") {
 	const { did, password, pds } = await promptAuthInfo();
 
 	const { endpoint, privateKey } = await prompt([{
-		type: command === "create" ? "text" : undefined,
+		type: command === "setup" ? "text" : undefined,
 		name: "endpoint",
 		message: "URL where the labeler will be hosted:",
 		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
@@ -42,7 +42,7 @@ if (command === "create" || command === "delete") {
 	}, { onCancel: () => process.exit(1) });
 
 	try {
-		if (command === "create") {
+		if (command === "setup") {
 			const operation = await plcSetupLabeler({
 				did,
 				password,
@@ -77,7 +77,7 @@ if (command === "create" || command === "delete") {
 		} else {
 			await plcClearLabeler({ did, password, pds, plcToken });
 			await deleteLabelerDeclaration({ identifier: did, password, pds });
-			console.log("Labeler account restored to normal.");
+			console.log("Labeler data cleared.");
 		}
 	} catch (error) {
 		console.error("Error setting up labeler:", error);
@@ -120,8 +120,8 @@ if (command === "create" || command === "delete") {
 } else {
 	console.log("Usage: npx @skyware/labeler [command]");
 	console.log("Commands:");
-	console.log("  create - Initialize an account as a labeler.");
-	console.log("  delete - Restore a labeler account to normal.");
+	console.log("  setup - Initialize an account as a labeler.");
+	console.log("  clear - Restore a labeler account to normal.");
 	console.log("  label add - Add new label declarations to a labeler account.");
 	console.log("  label delete - Remove label declarations from a labeler account.");
 }
