@@ -104,6 +104,7 @@ export class LabelerServer {
 				{ websocket: true },
 				this.subscribeLabelsHandler,
 			);
+			this.app.get("/xrpc/*", this.unknownMethodHandler);
 		});
 	}
 
@@ -418,6 +419,12 @@ export class LabelerServer {
 			}
 		}
 	};
+
+	/**
+	 * Catch-all handler for unknown XRPC methods.
+	 */
+	unknownMethodHandler: GetMethod = async (_req, res) =>
+		res.send({ error: "MethodNotImplemented", message: "Method Not Implemented" });
 
 	/**
 	 * Add a WebSocket connection to the list of subscribers for a given lexicon.
