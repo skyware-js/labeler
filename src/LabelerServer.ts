@@ -113,7 +113,7 @@ export class LabelerServer {
 	 * @param port The port to listen on.
 	 * @param callback A callback to run when the server is started.
 	 */
-	start(port: number, callback: () => void = () => {}) {
+	start(port: number, callback: (error: Error | null, address: string) => void = () => {}) {
 		this.app.listen({ port }, callback);
 	}
 
