@@ -20,7 +20,7 @@ import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
-import { GetMethod, SignedLabel, WebSocketMethod } from "./util/types.js";
+import { GetMethod, SavedLabel, WebSocketMethod } from "./util/types.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -127,63 +127,75 @@ export class LabelerServer {
 	/**
 	 * Create and insert a label into the database, emitting it to subscribers.
 	 * @param label The label to create.
+	 * @returns The created label.
 	 */
-	async createLabel(label: ComAtprotoLabelDefs.Label): Promise<SignedLabel> {
+	async createLabel(label: ComAtprotoLabelDefs.Label): Promise<SavedLabel> {
 		const signed = labelIsSigned(label) ? label : await signLabel(label, this.signingKey);
+
 		const stmt = this.db.prepare(`
 			INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`);
+
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
 		const result = stmt.run(src, uri, cid, val, neg ? 1 : 0, cts, exp, sig);
 		if (!result.changes) throw new Error("Failed to insert label");
-		this.emitLabel(signed);
-		return signed;
+
+		const id = Number(result.lastInsertRowid);
+
+		this.emitLabel(id, signed);
+		return { id, ...signed };
 	}
 
+	/**
+	 * Create and insert labels into the database, emitting them to subscribers.
+	 * @param subject The subject of the labels.
+	 * @param labels The labels to create.
+	 * @returns The created labels.
+	 */
 	async createLabels(
 		subject: { uri: string; cid?: string | undefined },
 		labels: { create?: Array<string>; negate?: Array<string> },
-	) {
+	): Promise<Array<SavedLabel>> {
 		const { uri, cid } = subject;
 		const { create, negate } = labels;
+
+		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
-			await Promise.all(
-				create.map((val) =>
-					this.createLabel({
-						src: this.did,
-						uri,
-						...(cid ? { cid } : {}),
-						val,
-						cts: new Date().toISOString(),
-					})
-				),
-			);
+			for (const val of create) {
+				const created = await this.createLabel({
+					src: this.did,
+					uri,
+					...(cid ? { cid } : {}),
+					val,
+					cts: new Date().toISOString(),
+				});
+				createdLabels.push(created);
+			}
 		}
 		if (negate) {
-			await Promise.all(
-				negate.map((val) =>
-					this.createLabel({
-						src: this.did,
-						uri,
-						...(cid ? { cid } : {}),
-						val,
-						neg: true,
-						cts: new Date().toISOString(),
-					})
-				),
-			);
+			for (const val of negate) {
+				const created = await this.createLabel({
+					src: this.did,
+					uri,
+					...(cid ? { cid } : {}),
+					val,
+					neg: true,
+					cts: new Date().toISOString(),
+				});
+				createdLabels.push(created);
+			}
 		}
+		return createdLabels;
 	}
 
 	/**
 	 * Emit a label to all subscribers.
+	 * @param seq The label's id.
 	 * @param label The label to emit.
 	 */
-	private emitLabel({ id, ...label }: ComAtprotoLabelDefs.Label) {
-		const frame = new MessageFrame({ seq: id, labels: [formatLabel(label)] }, {
-			type: "#labels",
-		});
+	private emitLabel(seq: number, label: ComAtprotoLabelDefs.Label) {
+		const frame = new MessageFrame({ seq, labels: [formatLabel(label)] }, { type: "#labels" });
 		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => {
 			ws.send(frame.toBytes());
 		});
@@ -350,7 +362,7 @@ export class LabelerServer {
 				throw new AuthRequiredError("Unauthorized");
 			}
 
-			const { event, subject, createdBy } = req
+			const { event, subject, subjectBlobCids = [], createdBy } = req
 				.body as ToolsOzoneModerationEmitEvent.InputSchema;
 			if (!event || !subject || !createdBy) {
 				throw new InvalidRequestError("Missing required field(s)");
@@ -379,10 +391,21 @@ export class LabelerServer {
 				throw new InvalidRequestError("Invalid subject");
 			}
 
-			await this.createLabels({ uri, cid }, {
+			const labels = await this.createLabels({ uri, cid }, {
 				create: labelEvent.createLabelVals,
 				negate: labelEvent.negateLabelVals,
 			});
+
+			await res.send(
+				{
+					id: labels[0].id,
+					event: labelEvent,
+					subject,
+					subjectBlobCids,
+					createdBy,
+					createdAt: new Date().toISOString(),
+				} satisfies ToolsOzoneModerationEmitEvent.OutputSchema,
+			);
 		} catch (e) {
 			if (e instanceof XRPCError) {
 				await res.status(e.type).send(e.payload);

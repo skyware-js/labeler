@@ -14,6 +14,7 @@ export type StrictPartial<T> =
 	& { [K in keyof T as undefined extends T[K] ? K : never]?: T[K] };
 
 export type SignedLabel = ComAtprotoLabelDefs.Label & { sig: Uint8Array };
+export type SavedLabel = SignedLabel & { id: number };
 
 export type GetMethod<T extends RouteGenericInterface = RouteGenericInterface> = RouteHandlerMethod<
 	RawServerDefault,

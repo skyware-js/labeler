@@ -15,7 +15,7 @@ export function formatLabel(
 		uri,
 		...(cid ? { cid } : {}),
 		val,
-		neg,
+		neg: !!neg,
 		cts,
 		...(exp ? { exp } : {}),
 	} as never;
