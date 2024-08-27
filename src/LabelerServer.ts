@@ -14,14 +14,13 @@ import {
 	verifyJwt,
 	XRPCError,
 } from "@atproto/xrpc-server";
+import { fastifyWebsocket } from "@fastify/websocket";
 import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
-import express, { type RequestHandler } from "express";
-import expressWs, { type Application, WebsocketRequestHandler } from "express-ws";
-import { Server } from "node:http";
+import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
-import { SignedLabel } from "./util/types.js";
+import { GetMethod, SignedLabel, WebSocketMethod } from "./util/types.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -50,11 +49,8 @@ export interface LabelerOptions {
 }
 
 export class LabelerServer {
-	/** The Express application instance. */
-	app: Application;
-
-	/** The HTTP server instance. */
-	server?: Server;
+	/** The Fastify application instance. */
+	app: FastifyInstance;
 
 	/** The SQLite database instance. */
 	db: SQLiteDatabase;
@@ -99,10 +95,16 @@ export class LabelerServer {
 			);
 		`);
 
-		this.app = expressWs(express().use(express.json())).app;
-		this.app.get("/xrpc/com.atproto.label.queryLabels", this.queryLabelsHandler);
-		this.app.ws("/xrpc/com.atproto.label.subscribeLabels", this.subscribeLabelsHandler);
-		this.app.post("/xrpc/tools.ozone.moderation.emitEvent", this.emitEventHandler);
+		this.app = fastify();
+		void this.app.register(fastifyWebsocket).then(() => {
+			this.app.get("/xrpc/com.atproto.label.queryLabels", this.queryLabelsHandler);
+			this.app.post("/xrpc/tools.ozone.moderation.emitEvent", this.emitEventHandler);
+			this.app.get(
+				"/xrpc/com.atproto.label.subscribeLabels",
+				{ websocket: true },
+				this.subscribeLabelsHandler,
+			);
+		});
 	}
 
 	/**
@@ -110,16 +112,16 @@ export class LabelerServer {
 	 * @param port The port to listen on.
 	 * @param callback A callback to run when the server is started.
 	 */
-	start(port = 443, callback?: () => void) {
-		this.server = this.app.listen(port, callback);
+	start(port: number, callback: () => void = () => {}) {
+		this.app.listen({ port }, callback);
 	}
 
 	/**
 	 * Stop the server.
 	 * @param callback A callback to run when the server is stopped.
 	 */
-	stop(callback?: () => void) {
-		if (this.server?.listening) this.server?.close(callback);
+	stop(callback: () => void = () => {}) {
+		this.app.close(callback);
 	}
 
 	/**
@@ -133,7 +135,7 @@ export class LabelerServer {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		`);
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
-		const result = stmt.run(src, uri, cid, val, neg, cts, exp, sig);
+		const result = stmt.run(src, uri, cid, val, neg ? 1 : 0, cts, exp, sig);
 		if (!result.changes) throw new Error("Failed to insert label");
 		this.emitLabel(signed);
 		return signed;
@@ -191,8 +193,8 @@ export class LabelerServer {
 	 * Parse a user DID from an Authorization header JWT.
 	 * @param req The Express request object.
 	 */
-	private async parseAuthHeaderDid(req: express.Request): Promise<string> {
-		const authHeader = req.get("Authorization");
+	private async parseAuthHeaderDid(req: FastifyRequest): Promise<string> {
+		const authHeader = req.headers.authorization;
 		if (!authHeader) throw new AuthRequiredError("Authorization header is required");
 
 		const [type, token] = authHeader.split(" ");
@@ -214,19 +216,23 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.queryLabels.
 	 */
-	queryLabelsHandler: RequestHandler = (req, res) => {
+	queryLabelsHandler: GetMethod<
+		{
+			Querystring: {
+				uriPatterns?: Array<string>;
+				sources?: Array<string>;
+				limit?: string;
+				cursor?: string;
+			};
+		}
+	> = async (req, res) => {
 		try {
 			const {
 				uriPatterns = [],
 				sources = [],
 				limit: limitStr = "50",
 				cursor: cursorStr = "0",
-			} = req.query as {
-				uriPatterns?: Array<string>;
-				sources?: Array<string>;
-				limit?: string;
-				cursor?: string;
-			};
+			} = req.query;
 
 			const cursor = parseInt(cursorStr, 10);
 			if (cursor !== undefined && Number.isNaN(cursor)) {
@@ -268,13 +274,13 @@ export class LabelerServer {
 
 			const nextCursor = rows[rows.length - 1]?.id ?? 0;
 
-			res.json({ cursor: nextCursor, labels });
+			await res.send({ cursor: nextCursor, labels });
 		} catch (e) {
 			if (e instanceof XRPCError) {
-				res.status(e.type).json(e.payload);
+				await res.status(e.type).send(e.payload);
 			} else {
 				console.error(e);
-				res.status(500).json({
+				await res.status(500).send({
 					error: "InternalServerError",
 					message: "An unknown error occurred",
 				});
@@ -285,10 +291,10 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.subscribeLabels.
 	 */
-	subscribeLabelsHandler: WebsocketRequestHandler = (ws, req) => {
-		const cursor = parseInt(req.params.cursor);
+	subscribeLabelsHandler: WebSocketMethod<{ Querystring: { cursor?: string } }> = (ws, req) => {
+		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
-		if (cursor && !Number.isNaN(cursor)) {
+		if (!Number.isNaN(cursor)) {
 			const latest = this.db.prepare(`
 				SELECT MAX(id) AS id FROM labels
 			`).get() as { id: number };
@@ -336,7 +342,7 @@ export class LabelerServer {
 	/**
 	 * Handler for tools.ozone.moderation.emitEvent.
 	 */
-	emitEventHandler: RequestHandler = async (req, res) => {
+	emitEventHandler: GetMethod = async (req, res) => {
 		try {
 			const actorDid = await this.parseAuthHeaderDid(req);
 			const authed = await this.auth(actorDid);
@@ -379,10 +385,10 @@ export class LabelerServer {
 			});
 		} catch (e) {
 			if (e instanceof XRPCError) {
-				res.status(e.type).json(e.payload);
+				await res.status(e.type).send(e.payload);
 			} else {
 				console.error(e);
-				res.status(500).json({
+				await res.status(500).send({
 					error: "InternalServerError",
 					message: "An unknown error occurred",
 				});
