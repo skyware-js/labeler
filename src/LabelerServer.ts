@@ -1,9 +1,9 @@
-import {
+import type {
 	ComAtprotoLabelDefs,
 	ToolsOzoneModerationDefs,
 	ToolsOzoneModerationEmitEvent,
 } from "@atproto/api";
-import { Keypair, Secp256k1Keypair } from "@atproto/crypto";
+import { type Keypair, Secp256k1Keypair } from "@atproto/crypto";
 import { IdResolver } from "@atproto/identity";
 import {
 	AuthRequiredError,
@@ -20,7 +20,12 @@ import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
-import { GetMethod, SavedLabel, WebSocketMethod } from "./util/types.js";
+import type {
+	ProcedureHandler,
+	QueryHandler,
+	SavedLabel,
+	SubscriptionHandler,
+} from "./util/types.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -229,15 +234,8 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.queryLabels.
 	 */
-	queryLabelsHandler: GetMethod<
-		{
-			Querystring: {
-				uriPatterns?: Array<string>;
-				sources?: Array<string>;
-				limit?: string;
-				cursor?: string;
-			};
-		}
+	queryLabelsHandler: QueryHandler<
+		{ uriPatterns?: Array<string>; sources?: Array<string>; limit?: string; cursor?: string }
 	> = async (req, res) => {
 		try {
 			const {
@@ -304,7 +302,10 @@ export class LabelerServer {
 	/**
 	 * Handler for com.atproto.label.subscribeLabels.
 	 */
-	subscribeLabelsHandler: WebSocketMethod<{ Querystring: { cursor?: string } }> = (ws, req) => {
+	subscribeLabelsHandler: SubscriptionHandler<{ Querystring: { cursor?: string } }> = (
+		ws,
+		req,
+	) => {
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
 		if (!Number.isNaN(cursor)) {
@@ -355,7 +356,10 @@ export class LabelerServer {
 	/**
 	 * Handler for tools.ozone.moderation.emitEvent.
 	 */
-	emitEventHandler: GetMethod = async (req, res) => {
+	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.InputSchema> = async (
+		req,
+		res,
+	) => {
 		try {
 			const actorDid = await this.parseAuthHeaderDid(req);
 			const authed = await this.auth(actorDid);
@@ -363,8 +367,7 @@ export class LabelerServer {
 				throw new AuthRequiredError("Unauthorized");
 			}
 
-			const { event, subject, subjectBlobCids = [], createdBy } = req
-				.body as ToolsOzoneModerationEmitEvent.InputSchema;
+			const { event, subject, subjectBlobCids = [], createdBy } = req.body;
 			if (!event || !subject || !createdBy) {
 				throw new InvalidRequestError("Missing required field(s)");
 			}
@@ -423,7 +426,7 @@ export class LabelerServer {
 	/**
 	 * Catch-all handler for unknown XRPC methods.
 	 */
-	unknownMethodHandler: GetMethod = async (_req, res) =>
+	unknownMethodHandler: QueryHandler = async (_req, res) =>
 		res.send({ error: "MethodNotImplemented", message: "Method Not Implemented" });
 
 	/**

@@ -16,11 +16,21 @@ export type StrictPartial<T> =
 export type SignedLabel = ComAtprotoLabelDefs.Label & { sig: Uint8Array };
 export type SavedLabel = SignedLabel & { id: number };
 
-export type GetMethod<T extends RouteGenericInterface = RouteGenericInterface> = RouteHandlerMethod<
+export type QueryHandler<
+	T extends RouteGenericInterface["Querystring"] = RouteGenericInterface["Querystring"],
+> = RouteHandlerMethod<
 	RawServerDefault,
 	RawRequestDefaultExpression,
 	RawReplyDefaultExpression,
-	T
+	{ Querystring: T }
 >;
-export type WebSocketMethod<T extends RequestGenericInterface = RequestGenericInterface> =
+export type ProcedureHandler<
+	T extends RouteGenericInterface["Body"] = RouteGenericInterface["Body"],
+> = RouteHandlerMethod<
+	RawServerDefault,
+	RawRequestDefaultExpression,
+	RawReplyDefaultExpression,
+	{ Body: T }
+>;
+export type SubscriptionHandler<T extends RequestGenericInterface = RequestGenericInterface> =
 	WebsocketHandler<RawServerDefault, RawRequestDefaultExpression, T>;
