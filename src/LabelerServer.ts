@@ -182,7 +182,7 @@ export class LabelerServer {
 		}
 		if (negate) {
 			for (const val of negate) {
-				const created = await this.createLabel({
+				const negated = await this.createLabel({
 					src: this.did,
 					uri,
 					...(cid ? { cid } : {}),
@@ -190,7 +190,7 @@ export class LabelerServer {
 					neg: true,
 					cts: new Date().toISOString(),
 				});
-				createdLabels.push(created);
+				createdLabels.push(negated);
 			}
 		}
 		return createdLabels;
@@ -400,6 +400,11 @@ export class LabelerServer {
 				throw new InvalidRequestError("Unsupported event type");
 			}
 			const labelEvent = event as ToolsOzoneModerationDefs.ModEventLabel;
+
+			if (!labelEvent.createLabelVals?.length && !labelEvent.negateLabelVals?.length) {
+				throw new InvalidRequestError("Must provide at least one label value");
+			}
+
 			const uri =
 				subject.$type === "com.atproto.admin.defs#repoRef"
 					&& typeof subject.did === "string"
@@ -423,6 +428,12 @@ export class LabelerServer {
 				create: labelEvent.createLabelVals,
 				negate: labelEvent.negateLabelVals,
 			});
+
+			if (!labels.length || !labels[0]?.id) {
+				throw new Error(
+					`No labels were created\nEvent:\n${JSON.stringify(labelEvent, null, 2)}`,
+				);
+			}
 
 			await res.send(
 				{
