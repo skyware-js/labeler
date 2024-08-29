@@ -290,7 +290,7 @@ export class LabelerServer {
 			SELECT * FROM labels
 			WHERE 1 = 1
 			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
-			${sources.length ? "AND src IN (?)" : ""}
+			${sources.length ? `AND src IN (${sources.map(() => "?").join(", ")})` : ""}
 			${cursor ? "AND id > ?" : ""}
 			ORDER BY id ASC
 			LIMIT ?
@@ -298,7 +298,7 @@ export class LabelerServer {
 
 			const params = [];
 			if (patterns.length) params.push(...patterns);
-			if (sources.length) params.push(sources);
+			if (sources.length) params.push(...sources);
 			if (cursor) params.push(cursor);
 			params.push(limit);
 
