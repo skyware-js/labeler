@@ -1,5 +1,6 @@
 import type {
 	ComAtprotoLabelDefs,
+	ComAtprotoLabelQueryLabels,
 	ToolsOzoneModerationDefs,
 	ToolsOzoneModerationEmitEvent,
 } from "@atproto/api";
@@ -235,36 +236,57 @@ export class LabelerServer {
 	 * Handler for com.atproto.label.queryLabels.
 	 */
 	queryLabelsHandler: QueryHandler<
-		{ uriPatterns?: Array<string>; sources?: Array<string>; limit?: string; cursor?: string }
+		{
+			uriPatterns?: string | Array<string>;
+			sources?: string | Array<string>;
+			limit?: string;
+			cursor?: string;
+		}
 	> = async (req, res) => {
 		try {
-			const {
-				uriPatterns = [],
-				sources = [],
-				limit: limitStr = "50",
-				cursor: cursorStr = "0",
-			} = req.query;
+			let uriPatterns: Array<string>;
+			if (!req.query.uriPatterns) {
+				uriPatterns = [];
+			} else if (typeof req.query.uriPatterns === "string") {
+				uriPatterns = [req.query.uriPatterns];
+			} else {
+				uriPatterns = req.query.uriPatterns || [];
+			}
 
-			const cursor = parseInt(cursorStr, 10);
+			let sources: Array<string>;
+			if (!req.query.sources) {
+				sources = [];
+			} else if (typeof req.query.sources === "string") {
+				sources = [req.query.sources];
+			} else {
+				sources = req.query.sources || [];
+			}
+
+			const cursor = parseInt(req.query.cursor || "0", 10);
 			if (cursor !== undefined && Number.isNaN(cursor)) {
 				throw new InvalidRequestError("Cursor must be an integer");
 			}
 
-			const limit = parseInt(limitStr, 10);
+			const limit = parseInt(req.query.limit || "50", 10);
 			if (Number.isNaN(limit) || limit < 1 || limit > 250) {
 				throw new InvalidRequestError("Limit must be an integer between 1 and 250");
 			}
 
 			const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
-				if (pattern.indexOf("*") !== pattern.length - 1) {
+				pattern = pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_");
+
+				const starIndex = pattern.indexOf("*");
+				if (starIndex === -1) return pattern;
+
+				if (starIndex !== pattern.length - 1) {
 					throw new InvalidRequestError(
 						"Only trailing wildcards are supported in uriPatterns",
 					);
 				}
-				return pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_").slice(0, -1) + "%";
+				return pattern.slice(0, -1) + "%";
 			});
 
-			const stmt = this.db.prepare<unknown[], ComAtprotoLabelDefs.Label>(`
+			const stmt = this.db.prepare<unknown[], SavedLabel>(`
 			SELECT * FROM labels
 			WHERE 1 = 1
 			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
@@ -283,9 +305,11 @@ export class LabelerServer {
 			const rows = stmt.all(params);
 			const labels = rows.map(formatLabel);
 
-			const nextCursor = rows[rows.length - 1]?.id ?? 0;
+			const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
 
-			await res.send({ cursor: nextCursor, labels });
+			await res.send(
+				{ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.OutputSchema,
+			);
 		} catch (e) {
 			if (e instanceof XRPCError) {
 				await res.status(e.type).send(e.payload);
