@@ -8,7 +8,7 @@ const LABEL_VERSION = 1;
 export function formatLabel(
 	label: ComAtprotoLabelDefs.Label,
 ): StrictPartial<ComAtprotoLabelDefs.Label> {
-	const { src, uri, cid, val, neg, cts, exp } = label;
+	const { src, uri, cid, val, neg, cts, exp, sig } = label;
 	return {
 		ver: LABEL_VERSION,
 		src,
@@ -18,6 +18,7 @@ export function formatLabel(
 		neg: !!neg,
 		cts,
 		...(exp ? { exp } : {}),
+		...(sig ? { sig } : {}),
 	} as never;
 }
 
