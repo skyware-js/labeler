@@ -237,7 +237,7 @@ export class LabelerServer {
 	}
 
 	/**
-	 * Handler for com.atproto.label.queryLabels.
+	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
 	queryLabelsHandler: QueryHandler<
 		{
@@ -328,7 +328,7 @@ export class LabelerServer {
 	};
 
 	/**
-	 * Handler for com.atproto.label.subscribeLabels.
+	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).
 	 */
 	subscribeLabelsHandler: SubscriptionHandler<{ Querystring: { cursor?: string } }> = (
 		ws,
@@ -382,7 +382,7 @@ export class LabelerServer {
 	};
 
 	/**
-	 * Handler for tools.ozone.moderation.emitEvent.
+	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
 	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.InputSchema> = async (
 		req,
