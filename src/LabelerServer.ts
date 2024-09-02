@@ -22,11 +22,13 @@ import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import type {
+	CreateLabelData,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
 	SubscriptionHandler,
 } from "./util/types.js";
+import { excludeUndefined } from "./util/util.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -132,11 +134,11 @@ export class LabelerServer {
 	}
 
 	/**
-	 * Create and insert a label into the database, emitting it to subscribers.
-	 * @param label The label to create.
-	 * @returns The created label.
+	 * Insert a label into the database, emitting it to subscribers.
+	 * @param label The label to insert.
+	 * @returns The inserted label.
 	 */
-	async createLabel(label: ComAtprotoLabelDefs.Label): Promise<SavedLabel> {
+	private async saveLabel(label: ComAtprotoLabelDefs.Label): Promise<SavedLabel> {
 		const signed = labelIsSigned(label) ? label : await signLabel(label, this.signingKey);
 
 		const stmt = this.db.prepare(`
@@ -155,6 +157,21 @@ export class LabelerServer {
 	}
 
 	/**
+	 * Create and insert a label into the database, emitting it to subscribers.
+	 * @param label The label to create.
+	 * @returns The created label.
+	 */
+	async createLabel(label: CreateLabelData): Promise<SavedLabel> {
+		return this.saveLabel(
+			excludeUndefined({
+				...label,
+				src: label.src ?? this.did,
+				cts: label.cts ?? new Date().toISOString(),
+			}),
+		);
+	}
+
+	/**
 	 * Create and insert labels into the database, emitting them to subscribers.
 	 * @param subject The subject of the labels.
 	 * @param labels The labels to create.
@@ -170,26 +187,13 @@ export class LabelerServer {
 		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
 			for (const val of create) {
-				const created = await this.createLabel({
-					src: this.did,
-					uri,
-					...(cid ? { cid } : {}),
-					val,
-					cts: new Date().toISOString(),
-				});
+				const created = await this.createLabel({ uri, cid, val });
 				createdLabels.push(created);
 			}
 		}
 		if (negate) {
 			for (const val of negate) {
-				const negated = await this.createLabel({
-					src: this.did,
-					uri,
-					...(cid ? { cid } : {}),
-					val,
-					neg: true,
-					cts: new Date().toISOString(),
-				});
+				const negated = await this.createLabel({ uri, cid, val, neg: true });
 				createdLabels.push(negated);
 			}
 		}

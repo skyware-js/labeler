@@ -1,25 +1,13 @@
 import { encode as cborEncode } from "@atcute/cbor";
 import type { ComAtprotoLabelDefs } from "@atproto/api";
 import type { Keypair } from "@atproto/crypto";
-import type { SignedLabel, StrictPartial } from "./types.js";
+import type { SignedLabel } from "./types.js";
+import { excludeUndefined } from "./util.js";
 
 const LABEL_VERSION = 1;
 
-export function formatLabel(
-	label: ComAtprotoLabelDefs.Label,
-): StrictPartial<ComAtprotoLabelDefs.Label> {
-	const { src, uri, cid, val, neg, cts, exp, sig } = label;
-	return {
-		ver: LABEL_VERSION,
-		src,
-		uri,
-		...(cid ? { cid } : {}),
-		val,
-		neg: !!neg,
-		cts,
-		...(exp ? { exp } : {}),
-		...(sig ? { sig } : {}),
-	} as never;
+export function formatLabel(label: ComAtprotoLabelDefs.Label): ComAtprotoLabelDefs.Label {
+	return excludeUndefined({ ...label, ver: LABEL_VERSION, neg: !!label.neg });
 }
 
 export async function signLabel(
