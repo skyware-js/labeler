@@ -53,5 +53,6 @@ export type ProcedureHandler<
 	RawReplyDefaultExpression,
 	{ Body: T }
 >;
-export type SubscriptionHandler<T extends RequestGenericInterface = RequestGenericInterface> =
-	WebsocketHandler<RawServerDefault, RawRequestDefaultExpression, T>;
+export type SubscriptionHandler<
+	T extends RequestGenericInterface["Querystring"] = RequestGenericInterface["Querystring"],
+> = WebsocketHandler<RawServerDefault, RawRequestDefaultExpression, { Querystring: T }>;

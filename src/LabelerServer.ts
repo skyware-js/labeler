@@ -330,10 +330,7 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).
 	 */
-	subscribeLabelsHandler: SubscriptionHandler<{ Querystring: { cursor?: string } }> = (
-		ws,
-		req,
-	) => {
+	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = (ws, req) => {
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
 		if (!Number.isNaN(cursor)) {
