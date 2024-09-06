@@ -41,8 +41,8 @@ if (command === "setup" || command === "clear") {
 		message: "You will receive a confirmation code via email. Code:",
 	}, { onCancel: () => process.exit(1) });
 
-	try {
-		if (command === "setup") {
+	if (command === "setup") {
+		try {
 			const operation = await plcSetupLabeler({
 				did,
 				password,
@@ -74,13 +74,17 @@ if (command === "setup" || command === "clear") {
 			}
 
 			console.log("Labeler setup complete!");
-		} else {
+		} catch (error) {
+			console.error("Error setting up labeler:", error);
+		}
+	} else {
+		try {
 			await plcClearLabeler({ did, password, pds, plcToken });
 			await deleteLabelerDeclaration({ identifier: did, password, pds });
 			console.log("Labeler data cleared.");
+		} catch (error) {
+			console.error("Error setting up labeler:", error);
 		}
-	} catch (error) {
-		console.error("Error setting up labeler:", error);
 	}
 } else if (command === "label" && (subcommand === "add" || subcommand === "delete")) {
 	const { did, password, pds } = await promptAuthInfo();
@@ -122,12 +126,16 @@ if (command === "setup" || command === "clear") {
 
 		const definitions = labelDefinitions.filter((def) => !identifiers.includes(def.identifier));
 
-		if (definitions.length) {
-			await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
-			console.log("Deleted label(s):", identifiers.join(", "));
-		} else {
-			await deleteLabelerDeclaration({ identifier: did, password, pds });
-			console.log("All labels cleared.");
+		try {
+			if (definitions.length) {
+				await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
+				console.log("Deleted label(s):", identifiers.join(", "));
+			} else {
+				await deleteLabelerDeclaration({ identifier: did, password, pds });
+				console.log("All labels cleared.");
+			}
+		} catch (error) {
+			console.error("Failed to delete labels:", error);
 		}
 	}
 } else {
