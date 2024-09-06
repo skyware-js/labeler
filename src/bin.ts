@@ -102,6 +102,13 @@ if (command === "setup" || command === "clear") {
 			);
 		}
 	} else {
+		if (!labelDefinitions.length) {
+			console.log(
+				"No labels are currently declared. Use the `label add` command to define new labels.",
+			);
+			process.exit(0);
+		}
+
 		const { identifiers } = await prompt({
 			type: "multiselect",
 			name: "identifiers",
@@ -113,12 +120,15 @@ if (command === "setup" || command === "clear") {
 			})),
 		}, { onCancel: () => process.exit(1) });
 
-		await setLabelerLabelDefinitions(
-			{ identifier: did, password, pds },
-			labelDefinitions.filter((def) => !identifiers.includes(def.identifier)),
-		);
+		const definitions = labelDefinitions.filter((def) => !identifiers.includes(def.identifier));
 
-		console.log("Deleted label(s):", identifiers.join(", "));
+		if (definitions.length) {
+			await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
+			console.log("Deleted label(s):", identifiers.join(", "));
+		} else {
+			await deleteLabelerDeclaration({ identifier: did, password, pds });
+			console.log("All labels cleared.");
+		}
 	}
 } else {
 	console.log("Usage: npx @skyware/labeler [command]");
