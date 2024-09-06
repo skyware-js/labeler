@@ -93,10 +93,13 @@ if (command === "setup" || command === "clear") {
 		);
 		const newDefinitions = await promptLabelDefinitions();
 		if (newDefinitions.length) {
-			await setLabelerLabelDefinitions({ identifier: did, password, pds }, [
-				...labelDefinitions,
-				...newDefinitions,
-			]);
+			const definitions = [...labelDefinitions, ...newDefinitions];
+			await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
+			console.log("Declared label(s):", definitions.map((d) => d.identifier).join(", "));
+		} else {
+			console.log(
+				"No labels were defined. You can use the `label add` command later to define new labels.",
+			);
 		}
 	} else {
 		const { identifiers } = await prompt({
