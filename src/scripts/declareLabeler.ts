@@ -81,5 +81,5 @@ export async function setLabelerLabelDefinitions(
  */
 export async function deleteLabelerDeclaration(credentials: LoginCredentials): Promise<void> {
 	const agent = await loginAgent(credentials);
-	return agent.app.bsky.labeler.service.delete({ repo: agent.accountDid });
+	return agent.app.bsky.labeler.service.delete({ repo: agent.accountDid, rkey: "self" });
 }
