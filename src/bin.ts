@@ -131,8 +131,7 @@ if (command === "setup" || command === "clear") {
 				await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
 				console.log("Deleted label(s):", identifiers.join(", "));
 			} else {
-				await deleteLabelerDeclaration({ identifier: did, password, pds });
-				console.log("All labels cleared.");
+				console.log("No labels were selected. Nothing to delete.");
 			}
 		} catch (error) {
 			console.error("Failed to delete labels:", error);
