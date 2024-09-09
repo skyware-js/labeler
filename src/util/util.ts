@@ -1,8 +1,10 @@
-import { StrictPartial } from "./types.js";
+import { NonNullishPartial } from "./types.js";
 
-export function excludeUndefined<T extends Record<PropertyKey, unknown>>(obj: T): StrictPartial<T> {
+export function excludeNullish<T extends Record<PropertyKey, unknown>>(
+	obj: T,
+): NonNullishPartial<T> {
 	return Object.entries(obj).reduce<Record<string, unknown>>((acc, [key, value]) => {
-		if (value !== undefined) {
+		if (value != null) {
 			acc[key] = value;
 		}
 		return acc;

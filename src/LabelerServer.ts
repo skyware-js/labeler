@@ -28,7 +28,7 @@ import type {
 	SavedLabel,
 	SubscriptionHandler,
 } from "./util/types.js";
-import { excludeUndefined } from "./util/util.js";
+import { excludeNullish } from "./util/util.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -163,7 +163,7 @@ export class LabelerServer {
 	 */
 	async createLabel(label: CreateLabelData): Promise<SavedLabel> {
 		return this.saveLabel(
-			excludeUndefined({
+			excludeNullish({
 				...label,
 				src: label.src ?? this.did,
 				cts: label.cts ?? new Date().toISOString(),

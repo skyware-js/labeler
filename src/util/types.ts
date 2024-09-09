@@ -9,11 +9,13 @@ import type {
 	RouteHandlerMethod,
 } from "fastify";
 
-type OptionalOrUndefinedKeys<T> = { [K in keyof T]: undefined extends T[K] ? K : never }[keyof T];
-type RequiredDefinedKeys<T> = Exclude<keyof T, OptionalOrUndefinedKeys<T>>;
-export type StrictPartial<T> =
-	& { [K in OptionalOrUndefinedKeys<T>]+?: Exclude<T[K], undefined> }
-	& { [K in RequiredDefinedKeys<T>]-?: T[K] };
+type NullishKeys<T> = {
+	[K in keyof T]: null extends T[K] ? K : undefined extends T[K] ? K : never;
+}[keyof T];
+type NonNullishKeys<T> = Exclude<keyof T, NullishKeys<T>>;
+export type NonNullishPartial<T> =
+	& { [K in NullishKeys<T>]+?: Exclude<T[K], null | undefined> }
+	& { [K in NonNullishKeys<T>]-?: T[K] };
 
 /**
  * Data required to create a label.
