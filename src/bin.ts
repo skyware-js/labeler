@@ -21,18 +21,6 @@ const idResolver = new IdResolver();
 if (command === "setup" || command === "clear") {
 	const { did, password, pds } = await promptAuthInfo();
 
-	const { endpoint, privateKey } = await prompt([{
-		type: command === "setup" ? "text" : undefined,
-		name: "endpoint",
-		message: "URL where the labeler will be hosted:",
-		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
-	}, {
-		type: "text",
-		name: "privateKey",
-		message: "Enter a hex-encoded signing key to use, or leave blank to generate a new one:",
-		validate: (value) => !value || /^[0-9a-f]*$/.test(value) || "Must be a hex-encoded string.",
-	}], { onCancel: () => process.exit(1) });
-
 	await plcRequestToken({ identifier: did, password, pds });
 
 	const { plcToken } = await prompt({
@@ -43,6 +31,21 @@ if (command === "setup" || command === "clear") {
 
 	if (command === "setup") {
 		try {
+			const { endpoint, privateKey } = await prompt([{
+				type: "text",
+				name: "endpoint",
+				message: "URL where the labeler will be hosted:",
+				validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+			}, {
+				type: "text",
+				name: "privateKey",
+				message:
+					"Enter a hex-encoded signing key to use, or leave blank to generate a new one:",
+
+				validate: (value) =>
+					!value || /^[0-9a-f]*$/.test(value) || "Must be a hex-encoded string.",
+			}], { onCancel: () => process.exit(1) });
+
 			const operation = await plcSetupLabeler({
 				did,
 				password,
