@@ -26,8 +26,6 @@
 		"./scripts": "./dist/scripts/index.js"
 	},
 	"devDependencies": {
-		"@atcute/bluesky": "^1.0.7",
-		"@atcute/ozone": "^1.0.4",
 		"@types/better-sqlite3": "^7.6.11",
 		"@types/node": "^20.11.19",
 		"@types/prompts": "^2.4.9",
@@ -39,7 +37,9 @@
 		"typescript": "^5.5.4"
 	},
 	"dependencies": {
-		"@atcute/cbor": "^1.0.0",
+		"@atcute/bluesky": "^1.0.7",
+		"@atcute/ozone": "^1.0.4",
+		"@atcute/cbor": "^1.0.2",
 		"@atcute/client": "^2.0.3",
 		"@fastify/websocket": "^10.0.1",
 		"@noble/curves": "^1.6.0",

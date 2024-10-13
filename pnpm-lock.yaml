@@ -8,12 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@atcute/bluesky':
+        specifier: ^1.0.7
+        version: 1.0.7(@atcute/client@2.0.3)
       '@atcute/cbor':
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^1.0.2
+        version: 1.0.2
       '@atcute/client':
         specifier: ^2.0.3
         version: 2.0.3
+      '@atcute/ozone':
+        specifier: ^1.0.4
+        version: 1.0.4(@atcute/bluesky@1.0.7(@atcute/client@2.0.3))(@atcute/client@2.0.3)
       '@fastify/websocket':
         specifier: ^10.0.1
         version: 10.0.1
@@ -36,12 +42,6 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
     devDependencies:
-      '@atcute/bluesky':
-        specifier: ^1.0.7
-        version: 1.0.7(@atcute/client@2.0.3)
-      '@atcute/ozone':
-        specifier: ^1.0.4
-        version: 1.0.4(@atcute/bluesky@1.0.7(@atcute/client@2.0.3))(@atcute/client@2.0.3)
       '@types/better-sqlite3':
         specifier: ^7.6.11
         version: 7.6.11
@@ -84,11 +84,11 @@ packages:
     peerDependencies:
       '@atcute/client': ^1.0.0 || ^2.0.0
 
-  '@atcute/cbor@1.0.0':
-    resolution: {integrity: sha512-aHbURHim6cem7ZRLYg+Q9CkbGAPAV9P2pms7V/p5OkpP/dAb7RgoFwf49vg1454xrCtfFOhCtheUnmxLROdG3Q==}
+  '@atcute/cbor@1.0.2':
+    resolution: {integrity: sha512-yuLzYCwWIv5qHwmecNqaWZE2ZQ7YDnX61l/exBGqtCO9wy70NLetembjukagJOn7beJ6Uf6mW90cMpETYCItLw==}
 
-  '@atcute/cid@1.0.0':
-    resolution: {integrity: sha512-JnWv3sg48zDBP318ErPYPI482Vw1Nm7e7WG+VYGSLRLp56b9LgcIh28p28gEmPtmsnM9hTAkKvJdi+CAkNDQUA==}
+  '@atcute/cid@1.0.1':
+    resolution: {integrity: sha512-92Cor2ruS7y+/wdFutp2qFDjJj4mTcO7HdZ/BhTQRg/nzWdAnTann5DAmYjD+IWRaXd5SYk4dOZnDt4lsGofzg==}
 
   '@atcute/client@2.0.3':
     resolution: {integrity: sha512-j9GryA5l+4F0BTQWa6/1XmsuSPSq+bqNCY3mrHUGD592hMqUZxgpYDLgRWL+719V287AW/56AwvFYlbjlENp7A==}
@@ -1019,13 +1019,13 @@ snapshots:
     dependencies:
       '@atcute/client': 2.0.3
 
-  '@atcute/cbor@1.0.0':
+  '@atcute/cbor@1.0.2':
     dependencies:
       '@atcute/base32': 1.0.0
-      '@atcute/cid': 1.0.0
+      '@atcute/cid': 1.0.1
       fp16: 0.3.0
 
-  '@atcute/cid@1.0.0':
+  '@atcute/cid@1.0.1':
     dependencies:
       '@atcute/base32': 1.0.0
       '@atcute/varint': 1.0.0
