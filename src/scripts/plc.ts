@@ -1,4 +1,4 @@
-import { ComAtprotoIdentitySignPlcOperation } from "@atproto/api";
+import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/client/lexicons";
 import { Secp256k1Keypair } from "@atproto/crypto";
 import * as ui8 from "uint8arrays";
 import { loginAgent, LoginCredentials } from "./util.js";
@@ -56,7 +56,7 @@ export interface PlcClearLabelerOptions {
  * @returns The PLC operation that was submitted.
  */
 export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
-	const agent = await loginAgent({
+	const { agent } = await loginAgent({
 		pds: options.pds,
 		identifier: options.did,
 		password: options.password,
@@ -68,15 +68,13 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 
 	const keyDid = keypair.did();
 
-	const operation: ComAtprotoIdentitySignPlcOperation.InputSchema = {};
+	const operation: ComAtprotoIdentitySignPlcOperation.Input = {};
 
-	const credentials = await agent.com.atproto.identity.getRecommendedDidCredentials();
-	if (!credentials.success) {
-		throw new Error("Failed to fetch DID document.");
-	}
+	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
 
 	if (
 		!credentials.data.verificationMethods
+		|| !(typeof credentials.data.verificationMethods === "object")
 		|| !("atproto_label" in credentials.data.verificationMethods)
 		|| !credentials.data.verificationMethods["atproto_label"]
 		|| (credentials.data.verificationMethods["atproto_label"] !== keyDid
@@ -90,6 +88,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 
 	if (
 		!credentials.data.services
+		|| !(typeof credentials.data.services === "object")
 		|| !("atproto_labeler" in credentials.data.services)
 		|| !credentials.data.services["atproto_labeler"]
 		|| typeof credentials.data.services["atproto_labeler"] !== "object"
@@ -106,12 +105,13 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		return;
 	}
 
-	const plcOp = await agent.com.atproto.identity.signPlcOperation({
-		token: options.plcToken,
-		...operation,
+	const plcOp = await agent.call("com.atproto.identity.signPlcOperation", {
+		data: { token: options.plcToken, ...operation },
 	});
 
-	await agent.com.atproto.identity.submitPlcOperation({ operation: plcOp.data.operation });
+	await agent.call("com.atproto.identity.submitPlcOperation", {
+		data: { operation: plcOp.data.operation },
+	});
 
 	if (!options.privateKey && operation.verificationMethods) {
 		const privateKey = ui8.toString(await keypair.export(), "hex");
@@ -132,38 +132,37 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
  * @param options Options for the function.
  */
 export async function plcClearLabeler(options: PlcClearLabelerOptions) {
-	const agent = await loginAgent({
+	const { agent } = await loginAgent({
 		pds: options.pds,
 		identifier: options.did,
 		password: options.password,
 	});
 
-	const credentials = await agent.com.atproto.identity.getRecommendedDidCredentials();
-	if (!credentials.success) {
-		throw new Error("Failed to fetch DID document.");
-	}
+	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
 
 	if (
 		credentials.data.verificationMethods
+		&& typeof credentials.data.verificationMethods === "object"
 		&& "atproto_label" in credentials.data.verificationMethods
 	) {
 		delete credentials.data.verificationMethods.atproto_label;
 	}
 
 	if (
-		credentials.data.services
+		credentials.data.services && typeof credentials.data.services === "object"
 		&& "atproto_labeler" in credentials.data.services
 		&& credentials.data.services["atproto_labeler"]
 	) {
 		delete credentials.data.services.atproto_labeler;
 	}
 
-	const plcOp = await agent.com.atproto.identity.signPlcOperation({
-		token: options.plcToken,
-		...credentials.data,
+	const plcOp = await agent.call("com.atproto.identity.signPlcOperation", {
+		data: { token: options.plcToken, ...credentials.data },
 	});
 
-	await agent.com.atproto.identity.submitPlcOperation({ operation: plcOp.data.operation });
+	await agent.call("com.atproto.identity.submitPlcOperation", {
+		data: { operation: plcOp.data.operation },
+	});
 }
 
 /**
@@ -172,6 +171,6 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
  * @param credentials The credentials of the labeler account.
  */
 export async function plcRequestToken(credentials: LoginCredentials): Promise<void> {
-	const agent = await loginAgent(credentials);
-	await agent.com.atproto.identity.requestPlcOperationSignature();
+	const { agent } = await loginAgent(credentials);
+	await agent.call("com.atproto.identity.requestPlcOperationSignature", {});
 }

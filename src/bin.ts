@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { ComAtprotoLabelDefs } from "@atproto/api";
-import { LabelValueDefinition } from "@atproto/api/dist/client/types/com/atproto/label/defs.js";
-import { IdResolver } from "@atproto/identity";
+import type { ComAtprotoLabelDefs } from "@atcute/client/lexicons";
 import prompt from "prompts";
 import {
 	declareLabeler,
@@ -12,11 +10,10 @@ import {
 	plcSetupLabeler,
 	setLabelerLabelDefinitions,
 } from "./scripts/index.js";
+import { resolveHandle } from "./util/resolveHandle.js";
 
 const args = process.argv.slice(2);
 const [command, subcommand] = args;
-
-const idResolver = new IdResolver();
 
 if (command === "setup" || command === "clear") {
 	const { did, password, pds } = await promptAuthInfo();
@@ -161,9 +158,7 @@ async function promptAuthInfo() {
 			format: (value) => value.startsWith("@") ? value.slice(1) : value,
 		}, { onCancel: () => process.exit(1) });
 		if (!didOrHandle) continue;
-		did = didOrHandle.startsWith("did:")
-			? didOrHandle
-			: await idResolver.handle.resolve(didOrHandle);
+		did = didOrHandle.startsWith("did:") ? didOrHandle : await resolveHandle(didOrHandle);
 		if (!did) {
 			console.log(`Could not resolve "${didOrHandle}" to a valid account. Please try again.`);
 		}
@@ -194,7 +189,7 @@ async function confirm(message: string) {
 
 async function promptLabelDefinition(
 	existing?: Array<string>,
-): Promise<LabelValueDefinition | null> {
+): Promise<ComAtprotoLabelDefs.LabelValueDefinition | null> {
 	let canceled = false;
 	const { identifier, name, description, adultOnly, severity, blurs, defaultSetting } =
 		await prompt([{

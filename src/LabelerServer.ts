@@ -1,34 +1,26 @@
+import "@atcute/ozone/lexicons";
+import { XRPCError } from "@atcute/client";
 import type {
-	ComAtprotoLabelDefs,
+	At,
 	ComAtprotoLabelQueryLabels,
-	ToolsOzoneModerationDefs,
 	ToolsOzoneModerationEmitEvent,
-} from "@atproto/api";
-import { type Keypair, Secp256k1Keypair } from "@atproto/crypto";
-import { IdResolver } from "@atproto/identity";
-import {
-	AuthRequiredError,
-	ErrorFrame,
-	InvalidRequestError,
-	MessageFrame,
-	parseReqNsid,
-	verifyJwt,
-	XRPCError,
-} from "@atproto/xrpc-server";
+} from "@atcute/client/lexicons";
 import { fastifyWebsocket } from "@fastify/websocket";
 import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
 import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
+import { verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
+	Label,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
 	SubscriptionHandler,
 } from "./util/types.js";
-import { excludeNullish } from "./util/util.js";
+import { excludeNullish, frameToBytes } from "./util/util.js";
 
 /**
  * Options for the {@link LabelerServer} class.
@@ -64,27 +56,24 @@ export class LabelerServer {
 	db: SQLiteDatabase;
 
 	/** The DID of the labeler account. */
-	did: string;
+	did: At.DID;
 
 	/** A function that returns whether a DID is authorized to create labels. */
 	private auth: (did: string) => boolean | Promise<boolean>;
 
-	/** The signing key used for the labeler. */
-	private signingKey: Keypair;
-
-	/** The ID resolver instance. */
-	private idResolver = new IdResolver();
-
 	/** Open WebSocket connections, mapped by request NSID. */
 	private connections = new Map<string, Set<WebSocket>>();
+
+	/** The signing key used for the labeler. */
+	#signingKey: Uint8Array;
 
 	/**
 	 * Create a labeler server.
 	 * @param options Configuration options.
 	 */
 	constructor(options: LabelerOptions) {
-		this.did = options.did;
-		this.signingKey = new Secp256k1Keypair(ui8FromString(options.signingKey, "hex"), false);
+		this.did = options.did as At.DID;
+		this.#signingKey = ui8FromString(options.signingKey, "hex");
 		this.auth = options.auth ?? ((did) => did === this.did);
 
 		this.db = new Database(options.dbPath ?? "labels.db");
@@ -113,6 +102,7 @@ export class LabelerServer {
 				this.subscribeLabelsHandler,
 			);
 			this.app.get("/xrpc/*", this.unknownMethodHandler);
+			this.app.setErrorHandler(this.errorHandler);
 		});
 	}
 
@@ -138,8 +128,8 @@ export class LabelerServer {
 	 * @param label The label to insert.
 	 * @returns The inserted label.
 	 */
-	private async saveLabel(label: ComAtprotoLabelDefs.Label): Promise<SavedLabel> {
-		const signed = labelIsSigned(label) ? label : await signLabel(label, this.signingKey);
+	private saveLabel(label: Label): SavedLabel {
+		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
 
 		const stmt = this.db.prepare(`
 			INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
@@ -161,11 +151,11 @@ export class LabelerServer {
 	 * @param label The label to create.
 	 * @returns The created label.
 	 */
-	async createLabel(label: CreateLabelData): Promise<SavedLabel> {
+	createLabel(label: CreateLabelData): SavedLabel {
 		return this.saveLabel(
 			excludeNullish({
 				...label,
-				src: label.src ?? this.did,
+				src: (label.src ?? this.did) as At.DID,
 				cts: label.cts ?? new Date().toISOString(),
 			}),
 		);
@@ -177,23 +167,23 @@ export class LabelerServer {
 	 * @param labels The labels to create.
 	 * @returns The created labels.
 	 */
-	async createLabels(
+	createLabels(
 		subject: { uri: string; cid?: string | undefined },
 		labels: { create?: Array<string>; negate?: Array<string> },
-	): Promise<Array<SavedLabel>> {
+	): Array<SavedLabel> {
 		const { uri, cid } = subject;
 		const { create, negate } = labels;
 
 		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
 			for (const val of create) {
-				const created = await this.createLabel({ uri, cid, val });
+				const created = this.createLabel({ uri, cid, val });
 				createdLabels.push(created);
 			}
 		}
 		if (negate) {
 			for (const val of negate) {
-				const negated = await this.createLabel({ uri, cid, val, neg: true });
+				const negated = this.createLabel({ uri, cid, val, neg: true });
 				createdLabels.push(negated);
 			}
 		}
@@ -205,10 +195,10 @@ export class LabelerServer {
 	 * @param seq The label's id.
 	 * @param label The label to emit.
 	 */
-	private emitLabel(seq: number, label: ComAtprotoLabelDefs.Label) {
-		const frame = new MessageFrame({ seq, labels: [formatLabel(label)] }, { type: "#labels" });
+	private emitLabel(seq: number, label: Label) {
+		const bytes = frameToBytes("message", { seq, labels: [formatLabel(label)] }, "#labels");
 		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => {
-			ws.send(frame.toBytes());
+			ws.send(bytes);
 		});
 	}
 
@@ -218,20 +208,27 @@ export class LabelerServer {
 	 */
 	private async parseAuthHeaderDid(req: FastifyRequest): Promise<string> {
 		const authHeader = req.headers.authorization;
-		if (!authHeader) throw new AuthRequiredError("Authorization header is required");
+		if (!authHeader) {
+			throw new XRPCError(401, {
+				kind: "AuthRequired",
+				description: "Authorization header is required",
+			});
+		}
 
 		const [type, token] = authHeader.split(" ");
 		if (type !== "Bearer" || !token) {
-			throw new InvalidRequestError("Missing or invalid bearer token", "MissingJwt");
+			throw new XRPCError(400, {
+				kind: "MissingJwt",
+				description: "Missing or invalid bearer token",
+			});
 		}
 
-		const payload = await verifyJwt(
-			token,
-			this.did,
-			parseReqNsid(req),
-			async (did, forceRefresh) =>
-				(await this.idResolver.did.resolveAtprotoData(did, forceRefresh)).signingKey,
+		const nsid = (req.originalUrl || req.url || "").split("?")[0].replace("/xrpc/", "").replace(
+			/\/$/,
+			"",
 		);
+
+		const payload = await verifyJwt(token, this.did, nsid);
 
 		return payload.iss;
 	}
@@ -239,58 +236,57 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
-	queryLabelsHandler: QueryHandler<
-		{
-			uriPatterns?: string | Array<string>;
-			sources?: string | Array<string>;
-			limit?: string;
-			cursor?: string;
+	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.Params> = async (req, res) => {
+		let uriPatterns: Array<string>;
+		if (!req.query.uriPatterns) {
+			uriPatterns = [];
+		} else if (typeof req.query.uriPatterns === "string") {
+			uriPatterns = [req.query.uriPatterns];
+		} else {
+			uriPatterns = req.query.uriPatterns || [];
 		}
-	> = async (req, res) => {
-		try {
-			let uriPatterns: Array<string>;
-			if (!req.query.uriPatterns) {
-				uriPatterns = [];
-			} else if (typeof req.query.uriPatterns === "string") {
-				uriPatterns = [req.query.uriPatterns];
-			} else {
-				uriPatterns = req.query.uriPatterns || [];
-			}
 
-			let sources: Array<string>;
-			if (!req.query.sources) {
-				sources = [];
-			} else if (typeof req.query.sources === "string") {
-				sources = [req.query.sources];
-			} else {
-				sources = req.query.sources || [];
-			}
+		let sources: Array<string>;
+		if (!req.query.sources) {
+			sources = [];
+		} else if (typeof req.query.sources === "string") {
+			sources = [req.query.sources];
+		} else {
+			sources = req.query.sources || [];
+		}
 
-			const cursor = parseInt(req.query.cursor || "0", 10);
-			if (cursor !== undefined && Number.isNaN(cursor)) {
-				throw new InvalidRequestError("Cursor must be an integer");
-			}
-
-			const limit = parseInt(req.query.limit || "50", 10);
-			if (Number.isNaN(limit) || limit < 1 || limit > 250) {
-				throw new InvalidRequestError("Limit must be an integer between 1 and 250");
-			}
-
-			const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
-				pattern = pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_");
-
-				const starIndex = pattern.indexOf("*");
-				if (starIndex === -1) return pattern;
-
-				if (starIndex !== pattern.length - 1) {
-					throw new InvalidRequestError(
-						"Only trailing wildcards are supported in uriPatterns",
-					);
-				}
-				return pattern.slice(0, -1) + "%";
+		const cursor = parseInt(`${req.query.cursor || 0}`, 10);
+		if (cursor !== undefined && Number.isNaN(cursor)) {
+			throw new XRPCError(400, {
+				kind: "InvalidRequest",
+				description: "Cursor must be an integer",
 			});
+		}
 
-			const stmt = this.db.prepare<unknown[], SavedLabel>(`
+		const limit = parseInt(`${req.query.limit || 50}`, 10);
+		if (Number.isNaN(limit) || limit < 1 || limit > 250) {
+			throw new XRPCError(400, {
+				kind: "InvalidRequest",
+				description: "Limit must be an integer between 1 and 250",
+			});
+		}
+
+		const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
+			pattern = pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_");
+
+			const starIndex = pattern.indexOf("*");
+			if (starIndex === -1) return pattern;
+
+			if (starIndex !== pattern.length - 1) {
+				throw new XRPCError(400, {
+					kind: "InvalidRequest",
+					description: "Only trailing wildcards are supported in uriPatterns",
+				});
+			}
+			return pattern.slice(0, -1) + "%";
+		});
+
+		const stmt = this.db.prepare<unknown[], SavedLabel>(`
 			SELECT * FROM labels
 			WHERE 1 = 1
 			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
@@ -300,31 +296,18 @@ export class LabelerServer {
 			LIMIT ?
 		`);
 
-			const params = [];
-			if (patterns.length) params.push(...patterns);
-			if (sources.length) params.push(...sources);
-			if (cursor) params.push(cursor);
-			params.push(limit);
+		const params = [];
+		if (patterns.length) params.push(...patterns);
+		if (sources.length) params.push(...sources);
+		if (cursor) params.push(cursor);
+		params.push(limit);
 
-			const rows = stmt.all(params);
-			const labels = rows.map(formatLabel);
+		const rows = stmt.all(params);
+		const labels = rows.map(formatLabel);
 
-			const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
+		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
 
-			await res.send(
-				{ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.OutputSchema,
-			);
-		} catch (e) {
-			if (e instanceof XRPCError) {
-				await res.status(e.type).send(e.payload);
-			} else {
-				console.error(e);
-				await res.status(500).send({
-					error: "InternalServerError",
-					message: "An unknown error occurred",
-				});
-			}
-		}
+		await res.send({ cursor: nextCursor, labels });
 	};
 
 	/**
@@ -338,15 +321,15 @@ export class LabelerServer {
 				SELECT MAX(id) AS id FROM labels
 			`).get() as { id: number };
 			if (cursor > (latest.id ?? 0)) {
-				const errorFrame = new ErrorFrame({
+				const errorBytes = frameToBytes("error", {
 					error: "FutureCursor",
 					message: "Cursor is in the future",
 				});
-				ws.send(errorFrame.toBytes());
+				ws.send(errorBytes);
 				ws.terminate();
 			}
 
-			const stmt = this.db.prepare<[number], ComAtprotoLabelDefs.Label>(`
+			const stmt = this.db.prepare<[number], SavedLabel>(`
 				SELECT * FROM labels
 				WHERE id > ?
 				ORDER BY id ASC
@@ -355,18 +338,20 @@ export class LabelerServer {
 			try {
 				for (const row of stmt.iterate(cursor)) {
 					const { id: seq, ...label } = row;
-					const frame = new MessageFrame({ seq, labels: [formatLabel(label)] }, {
-						type: "#labels",
-					});
-					ws.send(frame.toBytes());
+					const bytes = frameToBytes(
+						"message",
+						{ seq, labels: [formatLabel(label)] },
+						"#labels",
+					);
+					ws.send(bytes);
 				}
 			} catch (e) {
 				console.error(e);
-				const errorFrame = new ErrorFrame({
+				const errorBytes = frameToBytes("error", {
 					error: "InternalServerError",
 					message: "An unknown error occurred",
 				});
-				ws.send(errorFrame.toBytes());
+				ws.send(errorBytes);
 				ws.terminate();
 			}
 		}
@@ -381,89 +366,87 @@ export class LabelerServer {
 	/**
 	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
-	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.InputSchema> = async (
-		req,
-		res,
-	) => {
-		try {
-			const actorDid = await this.parseAuthHeaderDid(req);
-			const authed = await this.auth(actorDid);
-			if (!authed) {
-				throw new AuthRequiredError("Unauthorized");
-			}
-
-			const { event, subject, subjectBlobCids = [], createdBy } = req.body;
-			if (!event || !subject || !createdBy) {
-				throw new InvalidRequestError("Missing required field(s)");
-			}
-
-			if (event.$type !== "tools.ozone.moderation.defs#modEventLabel") {
-				throw new InvalidRequestError("Unsupported event type");
-			}
-			const labelEvent = event as ToolsOzoneModerationDefs.ModEventLabel;
-
-			if (!labelEvent.createLabelVals?.length && !labelEvent.negateLabelVals?.length) {
-				throw new InvalidRequestError("Must provide at least one label value");
-			}
-
-			const uri =
-				subject.$type === "com.atproto.admin.defs#repoRef"
-					&& typeof subject.did === "string"
-					? subject.did
-					: (subject.$type === "com.atproto.repo.strongRef#main"
-							|| subject.$type === "com.atproto.repo.strongRef")
-							&& typeof subject.uri === "string"
-					? subject.uri
-					: null;
-			const cid =
-				subject.$type === "com.atproto.admin.defs#repoRef"
-					&& typeof subject.cid === "string"
-					? subject.cid
-					: undefined;
-
-			if (!uri) {
-				throw new InvalidRequestError("Invalid subject");
-			}
-
-			const labels = await this.createLabels({ uri, cid }, {
-				create: labelEvent.createLabelVals,
-				negate: labelEvent.negateLabelVals,
-			});
-
-			if (!labels.length || !labels[0]?.id) {
-				throw new Error(
-					`No labels were created\nEvent:\n${JSON.stringify(labelEvent, null, 2)}`,
-				);
-			}
-
-			await res.send(
-				{
-					id: labels[0].id,
-					event: labelEvent,
-					subject,
-					subjectBlobCids,
-					createdBy,
-					createdAt: new Date().toISOString(),
-				} satisfies ToolsOzoneModerationEmitEvent.OutputSchema,
-			);
-		} catch (e) {
-			if (e instanceof XRPCError) {
-				await res.status(e.type).send(e.payload);
-			} else {
-				console.error(e);
-				await res.status(500).send({
-					error: "InternalServerError",
-					message: "An unknown error occurred",
-				});
-			}
+	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.Input> = async (req, res) => {
+		const actorDid = await this.parseAuthHeaderDid(req);
+		const authed = await this.auth(actorDid);
+		if (!authed) {
+			throw new XRPCError(401, { kind: "AuthRequired", description: "Unauthorized" });
 		}
+
+		const { event, subject, subjectBlobCids = [], createdBy } = req.body;
+		if (!event || !subject || !createdBy) {
+			throw new XRPCError(400, {
+				kind: "InvalidRequest",
+				description: "Missing required field(s)",
+			});
+		}
+
+		if (event.$type !== "tools.ozone.moderation.defs#modEventLabel") {
+			throw new XRPCError(400, {
+				kind: "InvalidRequest",
+				description: "Unsupported event type",
+			});
+		}
+
+		if (!event.createLabelVals?.length && !event.negateLabelVals?.length) {
+			throw new XRPCError(400, {
+				kind: "InvalidRequest",
+				description: "Must provide at least one label value",
+			});
+		}
+
+		const uri = subject.$type === "com.atproto.admin.defs#repoRef"
+			? subject.did
+			: subject.$type === "com.atproto.repo.strongRef"
+			? subject.uri
+			: null;
+		const cid = subject.$type === "com.atproto.repo.strongRef" ? subject.cid : undefined;
+
+		if (!uri) {
+			throw new XRPCError(400, { kind: "InvalidRequest", description: "Invalid subject" });
+		}
+
+		const labels = this.createLabels({ uri, cid }, {
+			create: event.createLabelVals,
+			negate: event.negateLabelVals,
+		});
+
+		if (!labels.length || !labels[0]?.id) {
+			throw new Error(`No labels were created\nEvent:\n${JSON.stringify(event, null, 2)}`);
+		}
+
+		await res.send(
+			{
+				id: labels[0].id,
+				event,
+				subject,
+				subjectBlobCids,
+				createdBy,
+				createdAt: new Date().toISOString(),
+			} satisfies ToolsOzoneModerationEmitEvent.Output,
+		);
 	};
 
 	/**
 	 * Catch-all handler for unknown XRPC methods.
 	 */
 	unknownMethodHandler: QueryHandler = async (_req, res) =>
-		res.send({ error: "MethodNotImplemented", message: "Method Not Implemented" });
+		res.status(501).send({ error: "MethodNotImplemented", message: "Method Not Implemented" });
+
+	/**
+	 * Default error handler.
+	 */
+	errorHandler: typeof this.app.errorHandler = async (err, _req, res) => {
+		if (err instanceof XRPCError) {
+			return res.status(err.status).send({ error: err.kind, message: err.description });
+		} else {
+			console.error(err);
+			return res.status(500).send({
+				error: "InternalServerError",
+				message: "An unknown error occurred",
+			});
+		}
+	};
 
 	/**
 	 * Add a WebSocket connection to the list of subscribers for a given lexicon.

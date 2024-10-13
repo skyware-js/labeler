@@ -26,6 +26,8 @@
 		"./scripts": "./dist/scripts/index.js"
 	},
 	"devDependencies": {
+		"@atcute/bluesky": "^1.0.7",
+		"@atcute/ozone": "^1.0.4",
 		"@types/better-sqlite3": "^7.6.11",
 		"@types/node": "^20.11.19",
 		"@types/prompts": "^2.4.9",
@@ -38,11 +40,10 @@
 	},
 	"dependencies": {
 		"@atcute/cbor": "^1.0.0",
-		"@atproto/api": "^0.13.1",
-		"@atproto/crypto": "^0.4.0",
-		"@atproto/identity": "^0.4.0",
-		"@atproto/xrpc-server": "^0.6.2",
+		"@atcute/client": "^2.0.3",
 		"@fastify/websocket": "^10.0.1",
+		"@noble/curves": "^1.6.0",
+		"@noble/hashes": "^1.5.0",
 		"better-sqlite3": "^11.1.2",
 		"fastify": "^4.28.1",
 		"prompts": "^2.4.2",

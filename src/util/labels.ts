@@ -1,27 +1,21 @@
 import { encode as cborEncode } from "@atcute/cbor";
-import type { ComAtprotoLabelDefs } from "@atproto/api";
-import type { Keypair } from "@atproto/crypto";
-import type { SignedLabel } from "./types.js";
+import { k256Sign } from "./crypto.js";
+import type { Label, SignedLabel } from "./types.js";
 import { excludeNullish } from "./util.js";
 
 const LABEL_VERSION = 1;
 
-export function formatLabel(label: ComAtprotoLabelDefs.Label): ComAtprotoLabelDefs.Label {
+export function formatLabel(label: Label): Label {
 	return excludeNullish({ ...label, ver: LABEL_VERSION, neg: !!label.neg });
 }
 
-export async function signLabel(
-	label: ComAtprotoLabelDefs.Label,
-	signingKey: Keypair,
-): Promise<SignedLabel> {
+export function signLabel(label: Label, signingKey: Uint8Array): SignedLabel {
 	const toSign = formatLabel(label);
 	const bytes = cborEncode(toSign);
-	const sig = await signingKey.sign(bytes);
+	const sig = k256Sign(signingKey, bytes);
 	return { ...toSign, sig };
 }
 
-export function labelIsSigned<T extends ComAtprotoLabelDefs.Label>(
-	label: T,
-): label is T & { sig: Uint8Array } {
-	return label.sig !== undefined;
+export function labelIsSigned<T extends Label>(label: T): label is T & { sig: Uint8Array } {
+	return "sig" in label && label.sig !== undefined;
 }
