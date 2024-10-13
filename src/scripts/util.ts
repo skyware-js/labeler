@@ -7,6 +7,8 @@ export interface LoginCredentials {
 	identifier: string;
 	/** The account password. */
 	password: string;
+	/** The 2FA code, if 2FA is enabled. */
+	code?: string;
 }
 
 let xrpc: XRPC | undefined;

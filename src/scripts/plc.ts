@@ -1,10 +1,11 @@
 import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/client/lexicons";
-import { Secp256k1Keypair } from "@atproto/crypto";
+import { secp256k1 as k256 } from "@noble/curves/secp256k1";
 import * as ui8 from "uint8arrays";
+import { formatDidKey, SECP256K1_JWT_ALG } from "../util/crypto.js";
 import { loginAgent, LoginCredentials } from "./util.js";
 
 /** Options for the {@link plcSetupLabeler} function. */
-export interface PlcSetupLabelerOptions {
+export interface PlcSetupLabelerOptions extends LoginCredentials {
 	/** The HTTPS URL where the labeler is hosted. */
 	endpoint: string;
 
@@ -13,13 +14,6 @@ export interface PlcSetupLabelerOptions {
 	 * If you don't have a token, first call {@link plcRequestToken} to receive one via email.
 	 */
 	plcToken: string;
-
-	/** The URL of the PDS where the labeler account is located, if different from bsky.social. */
-	pds?: string;
-	/** The DID of the labeler account. */
-	did: string;
-	/** The password of the labeler account. Cannot be an app password. */
-	password: string;
 
 	/**
 	 * You may choose to provide your own hex-encoded secp256k1 signing key to use for the labeler.
@@ -31,19 +25,12 @@ export interface PlcSetupLabelerOptions {
 }
 
 /** Options for the {@link plcClearLabeler} function. */
-export interface PlcClearLabelerOptions {
+export interface PlcClearLabelerOptions extends LoginCredentials {
 	/**
 	 * The token to use to sign the PLC operation.
 	 * If you don't have a token, first call {@link plcRequestToken} to receive one via email.
 	 */
 	plcToken: string;
-
-	/** The URL of the PDS where the labeler account is located, if different from bsky.social. */
-	pds?: string;
-	/** The DID of the labeler account. */
-	did: string;
-	/** The password to the labeler account. Cannot be an app password. */
-	password: string;
 }
 
 /**
@@ -58,15 +45,17 @@ export interface PlcClearLabelerOptions {
 export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	const { agent } = await loginAgent({
 		pds: options.pds,
-		identifier: options.did,
+		identifier: options.identifier,
 		password: options.password,
 	});
 
-	const keypair = options.privateKey
-		? await Secp256k1Keypair.import(options.privateKey)
-		: await Secp256k1Keypair.create({ exportable: true });
+	const privateKey = options.privateKey
+		? options.privateKey instanceof Uint8Array
+			? options.privateKey
+			: ui8.fromString(options.privateKey, "hex")
+		: k256.utils.randomPrivateKey();
 
-	const keyDid = keypair.did();
+	const keyDid = formatDidKey(SECP256K1_JWT_ALG, privateKey);
 
 	const operation: ComAtprotoIdentitySignPlcOperation.Input = {};
 
@@ -114,13 +103,13 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	});
 
 	if (!options.privateKey && operation.verificationMethods) {
-		const privateKey = ui8.toString(await keypair.export(), "hex");
+		const privateKeyString = ui8.toString(privateKey, "hex");
 		console.log(
 			"This is your labeler's signing key. It will be needed to sign any labels you create.",
 			"You will not be able to retrieve this key again, so make sure to save it somewhere safe.",
 			"If you lose this key, you can run this again to generate a new one.",
 		);
-		console.log("Signing key:", privateKey);
+		console.log("Signing key:", privateKeyString);
 	}
 
 	return operation;
@@ -134,7 +123,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 export async function plcClearLabeler(options: PlcClearLabelerOptions) {
 	const { agent } = await loginAgent({
 		pds: options.pds,
-		identifier: options.did,
+		identifier: options.identifier,
 		password: options.password,
 	});
 

@@ -5,6 +5,7 @@ import {
 	declareLabeler,
 	deleteLabelerDeclaration,
 	getLabelerLabelDefinitions,
+	LoginCredentials,
 	plcClearLabeler,
 	plcRequestToken,
 	plcSetupLabeler,
@@ -16,9 +17,9 @@ const args = process.argv.slice(2);
 const [command, subcommand] = args;
 
 if (command === "setup" || command === "clear") {
-	const { did, password, pds } = await promptAuthInfo();
+	const credentials = await promptCredentials();
 
-	await plcRequestToken({ identifier: did, password, pds });
+	await plcRequestToken(credentials);
 
 	const { plcToken } = await prompt({
 		type: "text",
@@ -44,9 +45,7 @@ if (command === "setup" || command === "clear") {
 			}], { onCancel: () => process.exit(1) });
 
 			const operation = await plcSetupLabeler({
-				did,
-				password,
-				pds,
+				...credentials,
 				plcToken,
 				endpoint,
 				privateKey,
@@ -66,7 +65,7 @@ if (command === "setup" || command === "clear") {
 			);
 			const labelDefinitions = await promptLabelDefinitions();
 			if (labelDefinitions.length) {
-				await declareLabeler({ identifier: did, password, pds }, labelDefinitions, true);
+				await declareLabeler(credentials, labelDefinitions, true);
 			} else {
 				console.log(
 					"No labels were defined. You can use the `label add` command later to define new labels.",
@@ -79,17 +78,16 @@ if (command === "setup" || command === "clear") {
 		}
 	} else {
 		try {
-			await plcClearLabeler({ did, password, pds, plcToken });
-			await deleteLabelerDeclaration({ identifier: did, password, pds });
+			await plcClearLabeler({ ...credentials, plcToken });
+			await deleteLabelerDeclaration(credentials);
 			console.log("Labeler data cleared.");
 		} catch (error) {
 			console.error("Error setting up labeler:", error);
 		}
 	}
 } else if (command === "label" && (subcommand === "add" || subcommand === "delete")) {
-	const { did, password, pds } = await promptAuthInfo();
-	const labelDefinitions = await getLabelerLabelDefinitions({ identifier: did, password, pds })
-		?? [];
+	const credentials = await promptCredentials();
+	const labelDefinitions = await getLabelerLabelDefinitions(credentials) ?? [];
 
 	if (subcommand === "add") {
 		console.log(
@@ -98,7 +96,7 @@ if (command === "setup" || command === "clear") {
 		const newDefinitions = await promptLabelDefinitions();
 		if (newDefinitions.length) {
 			const definitions = [...labelDefinitions, ...newDefinitions];
-			await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
+			await setLabelerLabelDefinitions(credentials, definitions);
 			console.log("Declared label(s):", definitions.map((d) => d.identifier).join(", "));
 		} else {
 			console.log(
@@ -128,7 +126,7 @@ if (command === "setup" || command === "clear") {
 
 		try {
 			if (definitions.length) {
-				await setLabelerLabelDefinitions({ identifier: did, password, pds }, definitions);
+				await setLabelerLabelDefinitions(credentials, definitions);
 				console.log("Deleted label(s):", identifiers.join(", "));
 			} else {
 				console.log("No labels were selected. Nothing to delete.");
@@ -146,7 +144,7 @@ if (command === "setup" || command === "clear") {
 	console.log("  label delete - Remove label declarations from a labeler account.");
 }
 
-async function promptAuthInfo() {
+async function promptCredentials(): Promise<LoginCredentials> {
 	let did: string | undefined;
 	while (!did) {
 		const { did: didOrHandle } = await prompt({
@@ -164,7 +162,7 @@ async function promptAuthInfo() {
 		}
 	}
 
-	const { password, pds } = await prompt([{
+	const { password, pds, code } = await prompt([{
 		type: "password",
 		name: "password",
 		message: "Account password (cannot be an app password):",
@@ -174,9 +172,16 @@ async function promptAuthInfo() {
 		message: "URL of the PDS where the account is located:",
 		initial: "https://bsky.social",
 		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+	}, {
+		type: "text",
+		name: "code",
+		message: "2FA code (leave blank if 2FA is not enabled):",
+		initial: "",
 	}], { onCancel: () => process.exit(1) });
 
-	return { did, password, pds };
+	const credentials: LoginCredentials = { identifier: did, password, pds };
+	if (code) credentials.code = code.replaceAll(/\s+/g, "");
+	return credentials;
 }
 
 async function confirm(message: string) {

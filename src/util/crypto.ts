@@ -9,8 +9,8 @@ const SECP256K1_DID_PREFIX = new Uint8Array([0xe7, 0x01]);
 const BASE58_MULTIBASE_PREFIX = "z";
 const DID_KEY_PREFIX = "did:key:";
 
-const P256_JWT_ALG = "ES256";
-const SECP256K1_JWT_ALG = "ES256K";
+export const P256_JWT_ALG = "ES256";
+export const SECP256K1_JWT_ALG = "ES256K";
 
 const didToSigningKeyCache = new Map<string, { key: string; expires: number }>();
 
@@ -193,7 +193,7 @@ const parseKeyFromDidDocument = (doc: any, did: string): string => {
  * @param jwtAlg The JWT algorithm used by the signing key.
  * @param keyBytes The bytes of the pubkey.
  */
-const formatDidKey = (
+export const formatDidKey = (
 	jwtAlg: typeof P256_JWT_ALG | typeof SECP256K1_JWT_ALG,
 	keyBytes: Uint8Array,
 ): string => DID_KEY_PREFIX + formatMultikey(jwtAlg, keyBytes);
