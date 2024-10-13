@@ -14,11 +14,12 @@ import { verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
-	Label,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
+	SignedLabel,
 	SubscriptionHandler,
+	UnsignedLabel,
 } from "./util/types.js";
 import { excludeNullish, frameToBytes } from "./util/util.js";
 
@@ -128,7 +129,7 @@ export class LabelerServer {
 	 * @param label The label to insert.
 	 * @returns The inserted label.
 	 */
-	private saveLabel(label: Label): SavedLabel {
+	private saveLabel(label: UnsignedLabel): SavedLabel {
 		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
 
 		const stmt = this.db.prepare(`
@@ -195,7 +196,7 @@ export class LabelerServer {
 	 * @param seq The label's id.
 	 * @param label The label to emit.
 	 */
-	private emitLabel(seq: number, label: Label) {
+	private emitLabel(seq: number, label: SignedLabel) {
 		const bytes = frameToBytes("message", { seq, labels: [formatLabel(label)] }, "#labels");
 		this.connections.get("com.atproto.label.subscribeLabels")?.forEach((ws) => {
 			ws.send(bytes);
@@ -307,7 +308,7 @@ export class LabelerServer {
 
 		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
 
-		await res.send({ cursor: nextCursor, labels });
+		await res.send({ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.Output);
 	};
 
 	/**

@@ -1,4 +1,4 @@
-import type { ComAtprotoLabelDefs } from "@atcute/client/lexicons";
+import { At, ComAtprotoLabelDefs } from "@atcute/client/lexicons";
 import type { WebsocketHandler } from "@fastify/websocket";
 import type {
 	RawReplyDefaultExpression,
@@ -36,8 +36,9 @@ export interface CreateLabelData {
 	/** The expiration date of the label, if any. Must be in ISO 8601 format. */
 	exp?: string | undefined;
 }
-export type Label = Omit<ComAtprotoLabelDefs.Label, "sig"> & { sig?: Uint8Array };
-export type SignedLabel = Label & { sig: Uint8Array };
+export type UnsignedLabel = Omit<ComAtprotoLabelDefs.Label, "sig">;
+export type SignedLabel = UnsignedLabel & { sig: Uint8Array };
+export type FormattedLabel = UnsignedLabel & { sig?: At.Bytes };
 export type SavedLabel = SignedLabel & { id: number };
 
 export type QueryHandler<
