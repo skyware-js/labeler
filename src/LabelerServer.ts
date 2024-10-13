@@ -120,8 +120,16 @@ export class LabelerServer {
 	 * Stop the server.
 	 * @param callback A callback to run when the server is stopped.
 	 */
-	stop(callback: () => void = () => {}) {
+	close(callback: () => void = () => {}) {
 		this.app.close(callback);
+	}
+
+	/**
+	 * Alias for {@link LabelerServer#close}.
+	 * @param callback A callback to run when the server is stopped.
+	 */
+	stop(callback: () => void = () => {}) {
+		this.close(callback);
 	}
 
 	/**
