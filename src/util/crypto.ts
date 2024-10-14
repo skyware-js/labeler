@@ -1,4 +1,5 @@
 import { XRPCError } from "@atcute/client";
+import type { DidDocument } from "@atcute/client/utils/did";
 import { p256 } from "@noble/curves/p256";
 import { secp256k1 as k256 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha256";
@@ -41,7 +42,7 @@ export async function resolveDidToSigningKey(did: string, forceRefresh?: boolean
 		});
 		if (!res.ok) throw new Error(`Could not resolve DID: ${did}`);
 
-		didKey = parseKeyFromDidDocument(await res.json(), did);
+		didKey = parseKeyFromDidDocument(await res.json() as never, did);
 	} else if (didMethod === "web") {
 		if (!didValueParts.length) throw new Error(`Poorly formatted DID: ${did}`);
 		if (didValueParts.length > 1) throw new Error(`Unsupported did:web paths: ${did}`);
@@ -52,7 +53,7 @@ export async function resolveDidToSigningKey(did: string, forceRefresh?: boolean
 		});
 		if (!res.ok) throw new Error(`Could not resolve DID: ${did}`);
 
-		didKey = parseKeyFromDidDocument(await res.json(), did);
+		didKey = parseKeyFromDidDocument(await res.json() as never, did);
 	}
 
 	if (!didKey) throw new Error(`Could not resolve DID: ${did}`);
@@ -163,9 +164,12 @@ function verifySignatureWithKey(didKey: string, msgBytes: Uint8Array, sigBytes: 
  * @param did The DID the document is for.
  * @returns The atproto signing key.
  */
-const parseKeyFromDidDocument = (doc: any, did: string): string => {
-	const key = (doc as Array<any>).find((method) =>
-		method.id === `${did}#atproto` || method.id === `#atproto`
+const parseKeyFromDidDocument = (doc: DidDocument, did: string): string => {
+	if (!Array.isArray(doc?.verificationMethod)) {
+		throw new Error(`Could not parse signingKey from doc: ${JSON.stringify(doc)}`);
+	}
+	const key = doc.verificationMethod.find((method) =>
+		method?.id === `${did}#atproto` || method?.id === `#atproto`
 	);
 	if (
 		!key || typeof key !== "object" || !("type" in key) || typeof key.type !== "string"
@@ -184,7 +188,7 @@ const parseKeyFromDidDocument = (doc: any, did: string): string => {
 		const parsed = parseMultikey(key.publicKeyMultibase);
 		didKey = formatDidKey(parsed.jwtAlg, parsed.keyBytes);
 	}
-	if (!didKey) throw new Error(`Could not parse signingKey from doc: ${doc}`);
+	if (!didKey) throw new Error(`Could not parse signingKey from doc: ${JSON.stringify(doc)}`);
 	return didKey;
 };
 
