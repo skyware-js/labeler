@@ -6,8 +6,8 @@ import type {
 	ToolsOzoneModerationEmitEvent,
 } from "@atcute/client/lexicons";
 import { fastifyWebsocket } from "@fastify/websocket";
-import Database, { type Database as SQLiteDatabase } from "better-sqlite3";
 import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Database, { type Database as SQLiteDatabase } from "libsql";
 import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { verifyJwt } from "./util/crypto.js";
@@ -295,7 +295,7 @@ export class LabelerServer {
 			return pattern.slice(0, -1) + "%";
 		});
 
-		const stmt = this.db.prepare<unknown[], SavedLabel>(`
+		const stmt = this.db.prepare(`
 			SELECT * FROM labels
 			WHERE 1 = 1
 			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
@@ -311,7 +311,7 @@ export class LabelerServer {
 		if (cursor) params.push(cursor);
 		params.push(limit);
 
-		const rows = stmt.all(params);
+		const rows = stmt.all(params) as Array<SavedLabel>;
 		const labels = rows.map(formatLabel);
 
 		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
@@ -338,7 +338,7 @@ export class LabelerServer {
 				ws.terminate();
 			}
 
-			const stmt = this.db.prepare<[number], SavedLabel>(`
+			const stmt = this.db.prepare<[number]>(`
 				SELECT * FROM labels
 				WHERE id > ?
 				ORDER BY id ASC
@@ -346,7 +346,7 @@ export class LabelerServer {
 
 			try {
 				for (const row of stmt.iterate(cursor)) {
-					const { id: seq, ...label } = row;
+					const { id: seq, ...label } = row as SavedLabel;
 					const bytes = frameToBytes(
 						"message",
 						{ seq, labels: [formatLabel(label)] },

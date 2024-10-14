@@ -39,7 +39,7 @@ export interface CreateLabelData {
 export type UnsignedLabel = Omit<ComAtprotoLabelDefs.Label, "sig">;
 export type SignedLabel = UnsignedLabel & { sig: Uint8Array };
 export type FormattedLabel = UnsignedLabel & { sig?: At.Bytes };
-export type SavedLabel = SignedLabel & { id: number };
+export type SavedLabel = UnsignedLabel & { sig: ArrayBuffer; id: number };
 
 export type QueryHandler<
 	T extends RouteGenericInterface["Querystring"] = RouteGenericInterface["Querystring"],
