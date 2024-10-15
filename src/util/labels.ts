@@ -1,6 +1,5 @@
-import { encode as cborEncode } from "@atcute/cbor";
+import { encode as cborEncode, toBytes } from "@atcute/cbor";
 import type { At } from "@atcute/client/lexicons";
-import { toString as ui8ToString } from "uint8arrays";
 import { k256Sign } from "./crypto.js";
 import type { FormattedLabel, SignedLabel, UnsignedLabel } from "./types.js";
 import { excludeNullish } from "./util.js";
@@ -15,9 +14,9 @@ export function formatLabel(
 	label: UnsignedLabel & { sig?: ArrayBuffer | Uint8Array | At.Bytes },
 ): FormattedLabel {
 	const sig = label.sig instanceof ArrayBuffer
-		? { $bytes: ui8ToString(new Uint8Array(label.sig), "base64") }
+		? toBytes(new Uint8Array(label.sig))
 		: label.sig instanceof Uint8Array
-		? { $bytes: ui8ToString(label.sig, "base64") }
+		? toBytes(label.sig)
 		: label.sig;
 	if (!sig || !("$bytes" in sig)) {
 		throw new Error("Expected sig to be an object with base64 $bytes, got " + sig);

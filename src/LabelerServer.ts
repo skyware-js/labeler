@@ -1,4 +1,5 @@
 import "@atcute/ozone/lexicons";
+import { fromBytes } from "@atcute/cbor";
 import { XRPCError } from "@atcute/client";
 import type {
 	At,
@@ -8,7 +9,6 @@ import type {
 import { fastifyWebsocket } from "@fastify/websocket";
 import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import Database, { type Database as SQLiteDatabase } from "libsql";
-import { fromString as ui8FromString } from "uint8arrays";
 import type { WebSocket } from "ws";
 import { verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
@@ -81,11 +81,11 @@ export class LabelerServer {
 		this.did = options.did as At.DID;
 		this.auth = options.auth ?? ((did) => did === this.did);
 
-		if (options.signingKey.startsWith("did:key:")) {
-			throw new Error(INVALID_SIGNING_KEY_ERROR);
-		}
-		this.#signingKey = ui8FromString(options.signingKey, "hex");
-		if (this.#signingKey.byteLength !== 32) {
+		try {
+			if (options.signingKey.startsWith("did:key:")) throw 0;
+			this.#signingKey = fromBytes({ $bytes: options.signingKey });
+			if (this.#signingKey.byteLength !== 32) throw 0;
+		} catch (e) {
 			throw new Error(INVALID_SIGNING_KEY_ERROR);
 		}
 
