@@ -23,6 +23,11 @@ import type {
 } from "./util/types.js";
 import { excludeNullish, frameToBytes } from "./util/util.js";
 
+const INVALID_SIGNING_KEY_ERROR = `Make sure to provide a private signing key, not a public key.
+
+If you don't have a key, generate and set one using the \`npx @skyware/labeler setup\` command or the \`import { plcSetupLabeler } from "@skyware/labeler/scripts"\` function.
+For more information, see https://skyware.js.org/guides/labeler/introduction/getting-started/`;
+
 /**
  * Options for the {@link LabelerServer} class.
  */
@@ -74,8 +79,15 @@ export class LabelerServer {
 	 */
 	constructor(options: LabelerOptions) {
 		this.did = options.did as At.DID;
-		this.#signingKey = ui8FromString(options.signingKey, "hex");
 		this.auth = options.auth ?? ((did) => did === this.did);
+
+		if (options.signingKey.startsWith("did:key:")) {
+			throw new Error(INVALID_SIGNING_KEY_ERROR);
+		}
+		this.#signingKey = ui8FromString(options.signingKey, "hex");
+		if (this.#signingKey.byteLength !== 32) {
+			throw new Error(INVALID_SIGNING_KEY_ERROR);
+		}
 
 		this.db = new Database(options.dbPath ?? "labels.db");
 		this.db.pragma("journal_mode = WAL");
