@@ -17,15 +17,14 @@ let credentialManager: CredentialManager | undefined;
 export async function loginAgent(
 	{ pds, ...credentials }: LoginCredentials,
 ): Promise<{ agent: XRPC; session: AtpSessionData }> {
+	credentialManager ??= new CredentialManager({ service: pds || "https://bsky.social" });
+	xrpc ??= new XRPC({ handler: credentialManager });
+
 	if (
-		xrpc && credentialManager?.session
-		&& credentialsMatchSession(credentials, credentialManager.session)
+		credentialManager.session && credentialsMatchSession(credentials, credentialManager.session)
 	) {
 		return { agent: xrpc, session: credentialManager.session };
 	}
-
-	credentialManager ??= new CredentialManager({ service: pds || "https://bsky.social" });
-	xrpc ??= new XRPC({ handler: credentialManager });
 	const session = await credentialManager.login(credentials);
 	return { agent: xrpc, session };
 }
