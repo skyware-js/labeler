@@ -39,6 +39,7 @@ export async function declareLabeler(
 			policies: { labelValues, labelValueDefinitions: labelDefinitions },
 			createdAt: new Date().toISOString(),
 		} satisfies AppBskyLabelerService.Record,
+		validate: true,
 	} satisfies ComAtprotoRepoCreateRecord.Input;
 
 	// We check if existing is truthy because an empty array means the record exists, but contains no definitions.

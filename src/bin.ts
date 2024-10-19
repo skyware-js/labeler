@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import type { ComAtprotoLabelDefs } from "@atcute/client/lexicons";
+import { spawn } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 import prompt from "prompts";
 import {
 	declareLabeler,
@@ -85,7 +89,10 @@ if (command === "setup" || command === "clear") {
 			console.error("Error setting up labeler:", error);
 		}
 	}
-} else if (command === "label" && (subcommand === "add" || subcommand === "delete")) {
+} else if (
+	command === "label"
+	&& (subcommand === "add" || subcommand === "delete" || subcommand === "edit")
+) {
 	const credentials = await promptCredentials();
 	const labelDefinitions = await getLabelerLabelDefinitions(credentials) ?? [];
 
@@ -96,14 +103,17 @@ if (command === "setup" || command === "clear") {
 		const newDefinitions = await promptLabelDefinitions();
 		if (newDefinitions.length) {
 			const definitions = [...labelDefinitions, ...newDefinitions];
-			await setLabelerLabelDefinitions(credentials, definitions);
-			console.log("Declared label(s):", definitions.map((d) => d.identifier).join(", "));
+
+			try {
+				await setLabelerLabelDefinitions(credentials, definitions);
+				console.log("Declared label(s):", definitions.map((d) => d.identifier).join(", "));
+			} catch (error) {
+				console.error("Error adding label(s):", error);
+			}
 		} else {
-			console.log(
-				"No labels were defined. You can use the `label add` command later to define new labels.",
-			);
+			console.log("No labels were defined.");
 		}
-	} else {
+	} else if (subcommand === "delete") {
 		if (!labelDefinitions.length) {
 			console.log(
 				"No labels are currently declared. Use the `label add` command to define new labels.",
@@ -122,17 +132,40 @@ if (command === "setup" || command === "clear") {
 			})),
 		}, { onCancel: () => process.exit(1) });
 
-		const definitions = labelDefinitions.filter((def) => !identifiers.includes(def.identifier));
+		const [newDefinitions, removedIdentifiers] = labelDefinitions.reduce<
+			[Array<ComAtprotoLabelDefs.LabelValueDefinition>, Array<string>]
+		>(([newDefs, removed], def) => {
+			if (!identifiers.includes(def.identifier)) {
+				newDefs.push(def);
+			} else {
+				removed.push(def.identifier);
+			}
+			return [newDefs, removed];
+		}, [[], []]);
 
 		try {
-			if (definitions.length) {
-				await setLabelerLabelDefinitions(credentials, definitions);
-				console.log("Deleted label(s):", identifiers.join(", "));
+			if (removedIdentifiers.length) {
+				await setLabelerLabelDefinitions(credentials, newDefinitions);
+				console.log("Deleted label(s):", removedIdentifiers.join(", "));
 			} else {
 				console.log("No labels were selected. Nothing to delete.");
 			}
 		} catch (error) {
 			console.error("Failed to delete labels:", error);
+		}
+	} else if (subcommand === "edit") {
+		const labelDefinitions = await getLabelerLabelDefinitions(credentials) ?? [];
+
+		try {
+			const newDefinitions = await editLabelDefinitions(labelDefinitions);
+			if (newDefinitions.length) {
+				await setLabelerLabelDefinitions(credentials, newDefinitions);
+				console.log("Label definitions updated.");
+			} else {
+				console.log("No changes were made.");
+			}
+		} catch (error) {
+			console.error("Error updating label definitions:", error);
 		}
 	}
 } else {
@@ -142,6 +175,7 @@ if (command === "setup" || command === "clear") {
 	console.log("  clear - Restore a labeler account to normal.");
 	console.log("  label add - Add new label declarations to a labeler account.");
 	console.log("  label delete - Remove label declarations from a labeler account.");
+	console.log("  label edit - Bulk edit label definitions.");
 }
 
 async function promptCredentials(): Promise<LoginCredentials> {
@@ -293,4 +327,59 @@ async function promptLabelDefinitions() {
 	}
 
 	return definitions;
+}
+
+async function editLabelDefinitions(
+	labelDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition>,
+): Promise<Array<ComAtprotoLabelDefs.LabelValueDefinition>> {
+	// os.tmpdir() returns a symlink on macOS
+	const tmpdir = await fs.realpath(os.tmpdir());
+
+	const tmpFile = path.join(tmpdir, "labels.json");
+	await fs.writeFile(tmpFile, JSON.stringify(labelDefinitions, null, 4));
+	await fs.chmod(tmpFile, 0o600);
+
+	const editor = process.env.VISUAL || process.env.EDITOR || "vi";
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn(editor, [tmpFile], { stdio: "inherit" });
+		child.on("error", reject);
+		child.on("exit", (code) => {
+			if (code === 0) {
+				resolve();
+			} else {
+				reject(new Error(`Code ${code}`));
+			}
+		});
+	});
+
+	const definitionsText = await fs.readFile(tmpFile, "utf8");
+	let newDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition>;
+	try {
+		newDefinitions = JSON.parse(definitionsText);
+	} catch (error) {
+		throw new Error(
+			`Error parsing JSON: ${error}` + "\n\nFull definitions:\n" + definitionsText,
+		);
+	} finally {
+		await fs.unlink(tmpFile);
+	}
+
+	if (!Array.isArray(newDefinitions)) {
+		throw new Error("Definitions must be an array.\n\nFull definitions:\n" + definitionsText);
+	}
+
+	for (const definition of newDefinitions) {
+		if (
+			!definition || typeof definition !== "object" || !definition.identifier
+			|| !definition.locales.length || !definition.blurs || !definition.severity
+		) {
+			throw new Error(
+				"Invalid label definition: " + JSON.stringify(definition)
+					+ "\n\nFull definitions:\n"
+					+ definitionsText,
+			);
+		}
+	}
+
+	return newDefinitions;
 }
