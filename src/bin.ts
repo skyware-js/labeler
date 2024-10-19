@@ -262,20 +262,20 @@ async function promptLabelDefinition(
 			type: "select",
 			name: "severity",
 			message: "Label severity:",
-			choices: [{ title: "Informational", description: "(neutral)", value: "inform" }, {
-				title: "Alert",
-				description: "(warning)",
-				value: "alert",
-			}, { title: "None", description: "(no label)", value: "none" }],
+			choices: [{ title: "None", description: "(no label)", value: "none" }, {
+				title: "Informational",
+				description: "(neutral)",
+				value: "inform",
+			}, { title: "Alert", description: "(warning)", value: "alert" }],
 		}, {
 			type: "select",
 			name: "blurs",
 			message: "Should this label hide content?",
-			choices: [
-				{ title: "Content", description: "(hide all labeled content)", value: "content" },
-				{ title: "Media", description: "(hide media only)", value: "media" },
-				{ title: "None", description: "(no hiding)", value: "none" },
-			],
+			choices: [{ title: "None", description: "(no hiding)", value: "none" }, {
+				title: "Media",
+				description: "(hide media only)",
+				value: "media",
+			}, { title: "Content", description: "(hide all labeled content)", value: "content" }],
 		}, {
 			type: "select",
 			name: "defaultSetting",
