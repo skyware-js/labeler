@@ -55,7 +55,8 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 			: ui8.fromString(options.privateKey, "hex")
 		: k256.utils.randomPrivateKey();
 
-	const keyDid = formatDidKey(SECP256K1_JWT_ALG, privateKey);
+	const publicKey = k256.getPublicKey(privateKey);
+	const keyDid = formatDidKey(SECP256K1_JWT_ALG, publicKey);
 
 	const operation: ComAtprotoIdentitySignPlcOperation.Input = {};
 
