@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { XRPCError } from "@atcute/client";
 import type { ComAtprotoLabelDefs } from "@atcute/client/lexicons";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
@@ -15,6 +16,7 @@ import {
 	plcSetupLabeler,
 	setLabelerLabelDefinitions,
 } from "./scripts/index.js";
+import { loginAgent } from "./scripts/util.js";
 import { resolveHandle } from "./util/resolveHandle.js";
 
 const args = process.argv.slice(2);
@@ -199,7 +201,7 @@ async function promptCredentials(): Promise<LoginCredentials> {
 		}
 	}
 
-	const { password, pds, code } = await prompt([{
+	const { password, pds } = await prompt([{
 		type: "password",
 		name: "password",
 		message: "Account password (cannot be an app password):",
@@ -209,15 +211,26 @@ async function promptCredentials(): Promise<LoginCredentials> {
 		message: "URL of the PDS where the account is located:",
 		initial: "https://bsky.social",
 		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
-	}, {
-		type: "text",
-		name: "code",
-		message: "2FA code (leave blank if 2FA is not enabled):",
-		initial: "",
 	}], { onCancel: () => process.exit(1) });
 
 	const credentials: LoginCredentials = { identifier: did, password, pds };
-	if (code) credentials.code = code.replaceAll(/\s+/g, "");
+
+	try {
+		await loginAgent(credentials);
+	} catch (error) {
+		if (error instanceof XRPCError && error.kind === "AuthFactorTokenRequired") {
+			const { code } = await prompt({
+				type: "text",
+				name: "code",
+				message: "You will receive a 2FA code via email. Code:",
+				initial: "",
+			}, { onCancel: () => process.exit(1) });
+			credentials.code = code;
+		} else {
+			console.error("Error occurred while trying to log in:", error);
+			process.exit(1);
+		}
+	}
 	return credentials;
 }
 
