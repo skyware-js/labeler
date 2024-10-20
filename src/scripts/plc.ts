@@ -1,7 +1,7 @@
-import { fromBytes, toBytes } from "@atcute/cbor";
 import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/client/lexicons";
 import { secp256k1 as k256 } from "@noble/curves/secp256k1";
-import { formatDidKey, SECP256K1_JWT_ALG } from "../util/crypto.js";
+import { toString as ui8ToString } from "uint8arrays/to-string";
+import { formatDidKey, parsePrivateKey, SECP256K1_JWT_ALG } from "../util/crypto.js";
 import { loginAgent, LoginCredentials } from "./util.js";
 
 /** Options for the {@link plcSetupLabeler} function. */
@@ -16,7 +16,7 @@ export interface PlcSetupLabelerOptions extends LoginCredentials {
 	plcToken: string;
 
 	/**
-	 * You may choose to provide your own hex-encoded secp256k1 signing key to use for the labeler.
+	 * You may choose to provide your own secp256k1 signing key to use for the labeler.
 	 * Leave this empty to generate a new keypair.
 	 */
 	privateKey?: string | Uint8Array;
@@ -52,7 +52,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	const privateKey = options.privateKey
 		? options.privateKey instanceof Uint8Array
 			? options.privateKey
-			: fromBytes({ $bytes: options.privateKey })
+			: parsePrivateKey(options.privateKey)
 		: k256.utils.randomPrivateKey();
 
 	const publicKey = k256.getPublicKey(privateKey);
@@ -104,7 +104,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	});
 
 	if (!options.privateKey && operation.verificationMethods) {
-		const privateKeyString = toBytes(privateKey).$bytes;
+		const privateKeyString = ui8ToString(privateKey, "hex");
 		console.log(
 			"This is your labeler's signing key. It will be needed to sign any labels you create.",
 			"You will not be able to retrieve this key again, so make sure to save it somewhere safe.",

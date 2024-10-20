@@ -41,11 +41,14 @@ if (command === "setup" || command === "clear") {
 			}, {
 				type: "text",
 				name: "privateKey",
-				message:
-					"Enter a hex-encoded signing key to use, or leave blank to generate a new one:",
+				message: "Enter a signing key to use, or leave blank to generate a new one:",
 
-				validate: (value) =>
-					!value || /^[0-9a-f]*$/.test(value) || "Must be a hex-encoded string.",
+				validate: (value) => {
+					if (!value) return true;
+					if (/^[0-9a-f]*$/.test(value)) return true;
+					if (/^[A-Za-z0-9+/=]+$/.test(value)) return true;
+					return "Must be a hex or base64-encoded string.";
+				},
 			}], { onCancel: () => process.exit(1) });
 
 			const operation = await plcSetupLabeler({

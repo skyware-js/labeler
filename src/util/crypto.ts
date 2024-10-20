@@ -193,6 +193,27 @@ const parseKeyFromDidDocument = (doc: DidDocument, did: string): string => {
 };
 
 /**
+ * Parses a hex- or base64-encoded private key to a Uint8Array.
+ * @param privateKey The private key to parse.
+ */
+export const parsePrivateKey = (privateKey: string): Uint8Array => {
+	let keyBytes: Uint8Array | undefined;
+	try {
+		keyBytes = ui8.fromString(privateKey, "hex");
+		if (keyBytes.byteLength !== 32) throw 0;
+	} catch {
+		try {
+			keyBytes = ui8.fromString(privateKey, "base64url");
+		} catch {}
+	} finally {
+		if (!keyBytes) {
+			throw new Error("Invalid private key. Must be hex or base64url, and 32 bytes long.");
+		}
+		return keyBytes;
+	}
+};
+
+/**
  * Formats a pubkey in did:key format.
  * @param jwtAlg The JWT algorithm used by the signing key.
  * @param keyBytes The bytes of the pubkey.

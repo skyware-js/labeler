@@ -1,5 +1,4 @@
 import "@atcute/ozone/lexicons";
-import { fromBytes } from "@atcute/cbor";
 import { XRPCError } from "@atcute/client";
 import type {
 	At,
@@ -10,7 +9,7 @@ import { fastifyWebsocket } from "@fastify/websocket";
 import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import Database, { type Database as SQLiteDatabase } from "libsql";
 import type { WebSocket } from "ws";
-import { verifyJwt } from "./util/crypto.js";
+import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
@@ -83,9 +82,9 @@ export class LabelerServer {
 
 		try {
 			if (options.signingKey.startsWith("did:key:")) throw 0;
-			this.#signingKey = fromBytes({ $bytes: options.signingKey });
+			this.#signingKey = parsePrivateKey(options.signingKey);
 			if (this.#signingKey.byteLength !== 32) throw 0;
-		} catch (e) {
+		} catch {
 			throw new Error(INVALID_SIGNING_KEY_ERROR);
 		}
 
