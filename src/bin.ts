@@ -19,8 +19,8 @@ import {
 import { loginAgent } from "./scripts/util.js";
 import { resolveHandle } from "./util/resolveHandle.js";
 
-const args = process.argv.slice(2);
-const [command, subcommand] = args;
+const argv = process.argv.slice(2);
+const [command, subcommand, ...args] = argv;
 
 if (command === "setup" || command === "clear") {
 	const credentials = await promptCredentials();
@@ -126,16 +126,18 @@ if (command === "setup" || command === "clear") {
 			process.exit(0);
 		}
 
-		const { identifiers } = await prompt({
-			type: "multiselect",
-			name: "identifiers",
-			message: "Select the labels to remove",
-			min: 1,
-			choices: labelDefinitions.map((def) => ({
-				title: def.locales[0].name,
-				value: def.identifier,
-			})),
-		}, { onCancel: () => process.exit(1) });
+		const identifiers = args.length
+			? args
+			: (await prompt({
+				type: "multiselect",
+				name: "identifiers",
+				message: "Select the labels to remove",
+				min: 1,
+				choices: labelDefinitions.map((def) => ({
+					title: def.locales[0].name,
+					value: def.identifier,
+				})),
+			}, { onCancel: () => process.exit(1) })).identifiers;
 
 		const [newDefinitions, removedIdentifiers] = labelDefinitions.reduce<
 			[Array<ComAtprotoLabelDefs.LabelValueDefinition>, Array<string>]
