@@ -2,7 +2,7 @@
 	"name": "@skyware/labeler",
 	"type": "module",
 	"description": "A lightweight alternative to Ozone for operating an atproto labeler.",
-	"version": "0.1.12",
+	"version": "0.1.13",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"bin": "dist/bin.js",
