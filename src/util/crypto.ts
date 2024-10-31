@@ -152,8 +152,7 @@ export function k256Sign(privateKey: Uint8Array, msg: Uint8Array): Uint8Array {
  */
 function verifySignatureWithKey(didKey: string, msgBytes: Uint8Array, sigBytes: Uint8Array) {
 	if (!didKey.startsWith("did:key:")) throw new Error("Incorrect prefix for did:key: " + didKey);
-	const multikey = didKey.slice("did:key:".length);
-	const { jwtAlg } = parseMultikey(multikey);
+	const { jwtAlg } = parseDidMultikey(didKey);
 	const curve = jwtAlg === P256_JWT_ALG ? "p256" : "k256";
 	return verifyDidSig(curve, didKey, msgBytes, sigBytes);
 }
@@ -185,7 +184,7 @@ const parseKeyFromDidDocument = (doc: DidDocument, did: string): string => {
 	} else if (key.type === "EcdsaSecp256k1VerificationKey2019") {
 		didKey = formatDidKey(SECP256K1_JWT_ALG, keyBytes);
 	} else if (key.type === "Multikey") {
-		const parsed = parseMultikey(key.publicKeyMultibase);
+		const parsed = parseDidMultikey("did:key:" + key.publicKeyMultibase);
 		didKey = formatDidKey(parsed.jwtAlg, parsed.keyBytes);
 	}
 	if (!didKey) throw new Error(`Could not parse signingKey from doc: ${JSON.stringify(doc)}`);
@@ -304,12 +303,12 @@ const formatMultikey = (
 
 /**
  * Parses and decompresses the public key and JWT algorithm from multibase.
- * @param key The multikey to parse.
+ * @param didKey The did:key to parse.
  */
-const parseMultikey = (
-	key: string,
+const parseDidMultikey = (
+	didKey: string,
 ): { jwtAlg: typeof P256_JWT_ALG | typeof SECP256K1_JWT_ALG; keyBytes: Uint8Array } => {
-	const multikey = extractMultikey(key);
+	const multikey = extractMultikey(didKey);
 	const prefixedBytes = extractPrefixedBytes(multikey);
 
 	const keyCurve = hasPrefix(prefixedBytes, P256_DID_PREFIX)
