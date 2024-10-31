@@ -7,6 +7,9 @@ import * as ui8 from "uint8arrays";
 
 const P256_DID_PREFIX = new Uint8Array([0x80, 0x24]);
 const SECP256K1_DID_PREFIX = new Uint8Array([0xe7, 0x01]);
+// should equal P256_DID_PREFIX.length and SECP256K1_DID_PREFIX.length
+const DID_PREFIX_LENGTH = 2;
+
 const BASE58_MULTIBASE_PREFIX = "z";
 const DID_KEY_PREFIX = "did:key:";
 
@@ -101,7 +104,10 @@ export async function verifyJwt(
 	const msgBytes = ui8.fromString(parts.slice(0, 2).join("."), "utf8");
 	const sigBytes = ui8.fromString(sig, "base64url");
 
-	const signingKey = await resolveDidToSigningKey(payload.iss, false);
+	const signingKey = await resolveDidToSigningKey(payload.iss, false).catch((e) => {
+		console.error(e);
+		throw new XRPCError(500, { kind: "InternalError", description: "Could not resolve DID" });
+	});
 
 	let validSig: boolean;
 	try {
@@ -313,11 +319,12 @@ const parseDidMultikey = (
 
 	const keyCurve = hasPrefix(prefixedBytes, P256_DID_PREFIX)
 		? "p256"
-		: hasPrefix(prefixedBytes, P256_DID_PREFIX)
+		: hasPrefix(prefixedBytes, SECP256K1_DID_PREFIX)
 		? "k256"
 		: null;
 	if (!keyCurve) throw new Error("Invalid curve for multikey: " + multikey);
-	const keyBytes = decompressPubkey(keyCurve, prefixedBytes.subarray(keyCurve.length));
+
+	const keyBytes = decompressPubkey(keyCurve, prefixedBytes.subarray(DID_PREFIX_LENGTH));
 
 	return { jwtAlg: keyCurve === "p256" ? P256_JWT_ALG : SECP256K1_JWT_ALG, keyBytes };
 };
