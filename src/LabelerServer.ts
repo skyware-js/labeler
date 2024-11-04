@@ -6,7 +6,11 @@ import type {
 	ToolsOzoneModerationEmitEvent,
 } from "@atcute/client/lexicons";
 import { fastifyWebsocket } from "@fastify/websocket";
-import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import fastify, {
+	type FastifyInstance,
+	type FastifyListenOptions,
+	type FastifyRequest,
+} from "fastify";
 import Database, { type Database as SQLiteDatabase } from "libsql";
 import type { WebSocket } from "ws";
 import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
@@ -123,8 +127,25 @@ export class LabelerServer {
 	 * @param port The port to listen on.
 	 * @param callback A callback to run when the server is started.
 	 */
-	start(port: number, callback: (error: Error | null, address: string) => void = () => {}) {
-		this.app.listen({ port }, callback);
+	start(port: number, callback: (error: Error | null, address: string) => void): void;
+	/**
+	 * Start the server.
+	 * @param options Options for the server.
+	 * @param callback A callback to run when the server is started.
+	 */
+	start(
+		options: FastifyListenOptions,
+		callback: (error: Error | null, address: string) => void,
+	): void;
+	start(
+		portOrOptions: number | FastifyListenOptions,
+		callback: (error: Error | null, address: string) => void = () => {},
+	) {
+		if (typeof portOrOptions === "number") {
+			this.app.listen({ port: portOrOptions }, callback);
+		} else {
+			this.app.listen(portOrOptions, callback);
+		}
 	}
 
 	/**
