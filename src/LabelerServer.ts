@@ -11,7 +11,7 @@ import fastify, {
 	type FastifyListenOptions,
 	type FastifyRequest,
 } from "fastify";
-import Database, { type Database as SQLiteDatabase } from "libsql";
+import { Client, createClient } from "@libsql/client";
 import type { WebSocket } from "ws";
 import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
@@ -55,6 +55,18 @@ export interface LabelerOptions {
 	 * @default labels.db
 	 */
 	dbPath?: string;
+
+	/**
+	 * The URL of the database.
+	 * If provided, dbPath is ignored.
+	 */
+	url?: string;
+
+	/**
+	 * The authentication token for the database.
+	 * Required if url is provided.
+	 */
+	authToken?: string;
 }
 
 export class LabelerServer {
@@ -62,7 +74,7 @@ export class LabelerServer {
 	app: FastifyInstance;
 
 	/** The SQLite database instance. */
-	db: SQLiteDatabase;
+	db: Client;
 
 	/** The DID of the labeler account. */
 	did: At.DID;
@@ -92,9 +104,22 @@ export class LabelerServer {
 			throw new Error(INVALID_SIGNING_KEY_ERROR);
 		}
 
-		this.db = new Database(options.dbPath ?? "labels.db");
-		this.db.pragma("journal_mode = WAL");
-		this.db.exec(`
+		if (options.url) {
+			if (!options.authToken) {
+				throw new Error("authToken is required when using a remote database URL");
+			}
+			this.db = createClient({
+				url: options.url,
+				authToken: options.authToken,
+			});
+		} else {
+			this.db = createClient({
+				url: "file:" + (options.dbPath ?? "labels.db"),
+			});
+		}
+
+		this.db.execute("PRAGMA journal_mode = WAL");
+		this.db.execute(`
 			CREATE TABLE IF NOT EXISTS labels (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 				src TEXT NOT NULL,
@@ -169,19 +194,21 @@ export class LabelerServer {
 	 * @param label The label to insert.
 	 * @returns The inserted label.
 	 */
-	private saveLabel(label: UnsignedLabel): SavedLabel {
+	private async saveLabel(label: UnsignedLabel): Promise<SavedLabel> {
 		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
-
-		const stmt = this.db.prepare(`
-			INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`);
-
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
-		const result = stmt.run(src, uri, cid, val, neg ? 1 : 0, cts, exp, sig);
-		if (!result.changes) throw new Error("Failed to insert label");
 
-		const id = Number(result.lastInsertRowid);
+		const result = await this.db.execute({
+			sql: `
+				INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				RETURNING id
+			`,
+			args: [src, uri, cid!, val, neg ? 1 : 0, cts, exp!, sig],
+		});
+		if (!result.rowsAffected) throw new Error("Failed to insert label");
+
+		const id = Number(result.rows[0].id);
 
 		this.emitLabel(id, signed);
 		return { id, ...signed };
@@ -192,8 +219,8 @@ export class LabelerServer {
 	 * @param label The label to create.
 	 * @returns The created label.
 	 */
-	createLabel(label: CreateLabelData): SavedLabel {
-		return this.saveLabel(
+	async createLabel(label: CreateLabelData): Promise<SavedLabel> {
+		return await this.saveLabel(
 			excludeNullish({
 				...label,
 				src: (label.src ?? this.did) as At.DID,
@@ -208,23 +235,23 @@ export class LabelerServer {
 	 * @param labels The labels to create.
 	 * @returns The created labels.
 	 */
-	createLabels(
+	async createLabels(
 		subject: { uri: string; cid?: string | undefined },
 		labels: { create?: Array<string>; negate?: Array<string> },
-	): Array<SavedLabel> {
+	): Promise<Array<SavedLabel>> {
 		const { uri, cid } = subject;
 		const { create, negate } = labels;
 
 		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
 			for (const val of create) {
-				const created = this.createLabel({ uri, cid, val });
+				const created = await this.createLabel({ uri, cid, val });
 				createdLabels.push(created);
 			}
 		}
 		if (negate) {
 			for (const val of negate) {
-				const negated = this.createLabel({ uri, cid, val, neg: true });
+				const negated = await this.createLabel({ uri, cid, val, neg: true });
 				createdLabels.push(negated);
 			}
 		}
@@ -327,23 +354,48 @@ export class LabelerServer {
 			return pattern.slice(0, -1) + "%";
 		});
 
-		const stmt = this.db.prepare(`
-			SELECT * FROM labels
-			WHERE 1 = 1
-			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
-			${sources.length ? `AND src IN (${sources.map(() => "?").join(", ")})` : ""}
-			${cursor ? "AND id > ?" : ""}
-			ORDER BY id ASC
-			LIMIT ?
-		`);
+		const conditions: string[] = [];
+		const params: any[] = [];
 
-		const params = [];
-		if (patterns.length) params.push(...patterns);
-		if (sources.length) params.push(...sources);
-		if (cursor) params.push(cursor);
+		if (patterns.length) {
+			conditions.push("(" + patterns.map(() => "uri LIKE ?").join(" OR ") + ")");
+			params.push(...patterns);
+		}
+
+		if (sources.length) {
+			conditions.push(`src IN (${sources.map(() => "?").join(", ")})`);
+			params.push(...sources);
+		}
+
+		if (cursor) {
+			conditions.push("id > ?");
+			params.push(cursor);
+		}
+
 		params.push(limit);
 
-		const rows = stmt.all(params) as Array<SavedLabel>;
+		const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+		const result = await this.db.execute({
+			sql: `
+				SELECT * FROM labels
+				${whereClause}
+				ORDER BY id ASC
+				LIMIT ?
+			`,
+			args: params,
+		});
+
+		const rows = result.rows.map(row => ({
+			id: Number(row.id),
+			src: row.src as At.DID,
+			uri: row.uri as string,
+			val: row.val as string,
+			neg: Boolean(row.neg),
+			cts: row.cts as string,
+			...(row.cid ? { cid: row.cid as string } : {}),
+			...(row.exp ? { exp: row.exp as string } : {}),
+			...(row.sig ? { sig: row.sig as Uint8Array } : {})
+		}));
 		const labels = rows.map(formatLabel);
 
 		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
@@ -354,14 +406,15 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).
 	 */
-	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = (ws, req) => {
+	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = async (ws, req) => {
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
 		if (!Number.isNaN(cursor)) {
-			const latest = this.db.prepare(`
-				SELECT MAX(id) AS id FROM labels
-			`).get() as { id: number };
-			if (cursor > (latest.id ?? 0)) {
+			const latest = await this.db.execute({
+				sql: "SELECT MAX(id) AS id FROM labels",
+				args: []
+			});
+			if (cursor > (Number(latest.rows[0]?.id) ?? 0)) {
 				const errorBytes = frameToBytes("error", {
 					error: "FutureCursor",
 					message: "Cursor is in the future",
@@ -370,18 +423,31 @@ export class LabelerServer {
 				ws.terminate();
 			}
 
-			const stmt = this.db.prepare<[number]>(`
-				SELECT * FROM labels
-				WHERE id > ?
-				ORDER BY id ASC
-			`);
-
 			try {
-				for (const row of stmt.iterate(cursor)) {
-					const { id: seq, ...label } = row as SavedLabel;
+				const result = await this.db.execute({
+					sql: `
+						SELECT * FROM labels
+						WHERE id > ?
+						ORDER BY id ASC
+					`,
+					args: [cursor]
+				});
+
+				for (const row of result.rows) {
+					const { id: seq, src, uri, cid, val, neg, cts, exp, sig } = row;
+					const label = {
+						src: src as At.DID,
+						uri: uri as string,
+						val: val as string,
+						neg: Boolean(neg),
+						cts: cts as string,
+						...(cid ? { cid: cid as string } : {}),
+						...(exp ? { exp: exp as string } : {}),
+						...(sig ? { sig: sig as Uint8Array } : {})
+					};
 					const bytes = frameToBytes(
 						"message",
-						{ seq, labels: [formatLabel(label)] },
+						{ seq: Number(seq), labels: [formatLabel(label)] },
 						"#labels",
 					);
 					ws.send(bytes);
@@ -447,7 +513,7 @@ export class LabelerServer {
 			throw new XRPCError(400, { kind: "InvalidRequest", description: "Invalid subject" });
 		}
 
-		const labels = this.createLabels({ uri, cid }, {
+		const labels = await this.createLabels({ uri, cid }, {
 			create: event.createLabelVals,
 			negate: event.negateLabelVals,
 		});
