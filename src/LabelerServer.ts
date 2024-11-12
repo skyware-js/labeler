@@ -198,15 +198,25 @@ export class LabelerServer {
 		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
 
-		const result = await this.db.execute({
-			sql: `
-				INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-				RETURNING id
-			`,
-			args: [src, uri, cid!, val, neg ? 1 : 0, cts, exp!, sig],
-		});
-		if (!result.rowsAffected) throw new Error("Failed to insert label");
+		const sql = `
+    		INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
+    		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    		RETURNING id
+		`;
+
+		const args = [
+			src,
+			uri,
+			cid || null,
+			val,
+			neg ? 1 : 0,
+			cts,
+			exp || null,
+			sig
+		];
+
+		const result = await this.db.execute({ sql, args });
+		if (!result.rows.length) throw new Error("Failed to insert label");
 
 		const id = Number(result.rows[0].id);
 
