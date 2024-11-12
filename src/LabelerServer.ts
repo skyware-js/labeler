@@ -60,13 +60,13 @@ export interface LabelerOptions {
 	 * The URL of the database.
 	 * If provided, dbPath is ignored.
 	 */
-	url?: string;
+	dbUrl?: string;
 
 	/**
 	 * The authentication token for the database.
 	 * Required if url is provided.
 	 */
-	authToken?: string;
+	dbAuthToken?: string;
 }
 
 export class LabelerServer {
@@ -104,13 +104,13 @@ export class LabelerServer {
 			throw new Error(INVALID_SIGNING_KEY_ERROR);
 		}
 
-		if (options.url) {
-			if (!options.authToken) {
+		if (options.dbUrl) {
+			if (!options.dbAuthToken) {
 				throw new Error("authToken is required when using a remote database URL");
 			}
 			this.db = createClient({
-				url: options.url,
-				authToken: options.authToken,
+				url: options.dbUrl,
+				authToken: options.dbAuthToken,
 			});
 		} else {
 			this.db = createClient({
