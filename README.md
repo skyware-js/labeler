@@ -46,3 +46,10 @@ server.start(14831, (error, address) => {
     }
 });
 ```
+
+# Advanced
+
+## Bringing Your Own Database
+`@skyware/labeler` uses libsql by default, but can be configured prograamatically to use any database of your choosing. Instead of creating an ORM, the labeler constructor exposes a `dbCallbacks` property for registering your database callbacks for every significant operation. All callbacks are asynchronous, although it's your responsibility to check the resolved state of your connection before performing additional operations.
+
+A sample implementation can be found in `src/util/sqlite.ts`.

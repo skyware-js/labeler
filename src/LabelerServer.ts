@@ -7,12 +7,13 @@ import type {
 } from "@atcute/client/lexicons";
 import { fastifyWebsocket } from "@fastify/websocket";
 import fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import Database, { type Database as SQLiteDatabase } from "libsql";
 import type { WebSocket } from "ws";
 import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
+	DBCallbacks,
+	LabelerOptions,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
@@ -21,44 +22,23 @@ import type {
 	UnsignedLabel,
 } from "./util/types.js";
 import { excludeNullish, frameToBytes } from "./util/util.js";
+import { createSqliteCallbacks } from "./util/sqlite.js";
 
 const INVALID_SIGNING_KEY_ERROR = `Make sure to provide a private signing key, not a public key.
 
 If you don't have a key, generate and set one using the \`npx @skyware/labeler setup\` command or the \`import { plcSetupLabeler } from "@skyware/labeler/scripts"\` function.
 For more information, see https://skyware.js.org/guides/labeler/introduction/getting-started/`;
 
-/**
- * Options for the {@link LabelerServer} class.
- */
-export interface LabelerOptions {
-	/** The DID of the labeler account. */
-	did: string;
-
-	/**
-	 * The private signing key used for the labeler.
-	 * If you don't have a key, generate and set one using {@link plcSetupLabeler}.
-	 */
-	signingKey: string;
-
-	/**
-	 * A function that returns whether a DID is authorized to create labels.
-	 * By default, only the labeler account is authorized.
-	 * @param did The DID to check.
-	 */
-	auth?: (did: string) => boolean | Promise<boolean>;
-	/**
-	 * The path to the SQLite `.db` database file.
-	 * @default labels.db
-	 */
-	dbPath?: string;
-}
-
 export class LabelerServer {
 	/** The Fastify application instance. */
 	app: FastifyInstance;
 
-	/** The SQLite database instance. */
-	db: SQLiteDatabase;
+	/**
+	 * A set of asynchronous callbacks for the Labeler's operations.
+	 * When not provided via options, it defaults to a set of sqlite callbacks
+	 * based on the dbPath configuration.
+	 */
+	dbCallbacks: DBCallbacks;
 
 	/** The DID of the labeler account. */
 	did: At.DID;
@@ -80,6 +60,9 @@ export class LabelerServer {
 		this.did = options.did as At.DID;
 		this.auth = options.auth ?? ((did) => did === this.did);
 
+		this.dbCallbacks = options.dbCallbacks ?? createSqliteCallbacks();
+		this.dbCallbacks.connect(options);
+
 		try {
 			if (options.signingKey.startsWith("did:key:")) throw 0;
 			this.#signingKey = parsePrivateKey(options.signingKey);
@@ -87,22 +70,6 @@ export class LabelerServer {
 		} catch {
 			throw new Error(INVALID_SIGNING_KEY_ERROR);
 		}
-
-		this.db = new Database(options.dbPath ?? "labels.db");
-		this.db.pragma("journal_mode = WAL");
-		this.db.exec(`
-			CREATE TABLE IF NOT EXISTS labels (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				src TEXT NOT NULL,
-				uri TEXT NOT NULL,
-				cid TEXT,
-				val TEXT NOT NULL,
-				neg BOOLEAN DEFAULT FALSE,
-				cts DATETIME NOT NULL,
-				exp DATETIME,
-				sig BLOB
-			);
-		`);
 
 		this.app = fastify();
 		void this.app.register(fastifyWebsocket).then(() => {
@@ -148,22 +115,12 @@ export class LabelerServer {
 	 * @param label The label to insert.
 	 * @returns The inserted label.
 	 */
-	private saveLabel(label: UnsignedLabel): SavedLabel {
+	private async saveLabel(label: UnsignedLabel): Promise<SavedLabel> {
 		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
-
-		const stmt = this.db.prepare(`
-			INSERT INTO labels (src, uri, cid, val, neg, cts, exp, sig)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`);
-
-		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
-		const result = stmt.run(src, uri, cid, val, neg ? 1 : 0, cts, exp, sig);
-		if (!result.changes) throw new Error("Failed to insert label");
-
-		const id = Number(result.lastInsertRowid);
-
-		this.emitLabel(id, signed);
-		return { id, ...signed };
+		const saved = await this.dbCallbacks.createLabel(signed);
+		
+		this.emitLabel(saved.id, signed);
+		return saved;
 	}
 
 	/**
@@ -171,7 +128,7 @@ export class LabelerServer {
 	 * @param label The label to create.
 	 * @returns The created label.
 	 */
-	createLabel(label: CreateLabelData): SavedLabel {
+	async createLabel(label: CreateLabelData): Promise<SavedLabel> {
 		return this.saveLabel(
 			excludeNullish({
 				...label,
@@ -187,23 +144,23 @@ export class LabelerServer {
 	 * @param labels The labels to create.
 	 * @returns The created labels.
 	 */
-	createLabels(
+	async createLabels(
 		subject: { uri: string; cid?: string | undefined },
 		labels: { create?: Array<string>; negate?: Array<string> },
-	): Array<SavedLabel> {
+	): Promise<Array<SavedLabel>> {
 		const { uri, cid } = subject;
 		const { create, negate } = labels;
 
 		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
 			for (const val of create) {
-				const created = this.createLabel({ uri, cid, val });
+				const created = await this.createLabel({ uri, cid, val });
 				createdLabels.push(created);
 			}
 		}
 		if (negate) {
 			for (const val of negate) {
-				const negated = this.createLabel({ uri, cid, val, neg: true });
+				const negated = await this.createLabel({ uri, cid, val, neg: true });
 				createdLabels.push(negated);
 			}
 		}
@@ -306,23 +263,8 @@ export class LabelerServer {
 			return pattern.slice(0, -1) + "%";
 		});
 
-		const stmt = this.db.prepare(`
-			SELECT * FROM labels
-			WHERE 1 = 1
-			${patterns.length ? "AND " + patterns.map(() => "uri LIKE ?").join(" OR ") : ""}
-			${sources.length ? `AND src IN (${sources.map(() => "?").join(", ")})` : ""}
-			${cursor ? "AND id > ?" : ""}
-			ORDER BY id ASC
-			LIMIT ?
-		`);
+		const rows = await this.dbCallbacks.findLabels({ uriPatterns: patterns, sources, after: cursor, limit });
 
-		const params = [];
-		if (patterns.length) params.push(...patterns);
-		if (sources.length) params.push(...sources);
-		if (cursor) params.push(cursor);
-		params.push(limit);
-
-		const rows = stmt.all(params) as Array<SavedLabel>;
 		const labels = rows.map(formatLabel);
 
 		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
@@ -336,51 +278,49 @@ export class LabelerServer {
 	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = (ws, req) => {
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
-		if (!Number.isNaN(cursor)) {
-			const latest = this.db.prepare(`
-				SELECT MAX(id) AS id FROM labels
-			`).get() as { id: number };
-			if (cursor > (latest.id ?? 0)) {
-				const errorBytes = frameToBytes("error", {
-					error: "FutureCursor",
-					message: "Cursor is in the future",
-				});
-				ws.send(errorBytes);
-				ws.terminate();
-			}
-
-			const stmt = this.db.prepare<[number]>(`
-				SELECT * FROM labels
-				WHERE id > ?
-				ORDER BY id ASC
-			`);
-
-			try {
-				for (const row of stmt.iterate(cursor)) {
-					const { id: seq, ...label } = row as SavedLabel;
-					const bytes = frameToBytes(
-						"message",
-						{ seq, labels: [formatLabel(label)] },
-						"#labels",
-					);
-					ws.send(bytes);
+		// SubscriptionHandler is not async by default
+		const act = async () => {
+			if (!Number.isNaN(cursor)) {
+				const latest = await this.dbCallbacks.getLatestLabel();
+				if (cursor > (latest.id ?? 0)) {
+					const errorBytes = frameToBytes("error", {
+						error: "FutureCursor",
+						message: "Cursor is in the future",
+					});
+					ws.send(errorBytes);
+					ws.terminate();
 				}
-			} catch (e) {
-				console.error(e);
-				const errorBytes = frameToBytes("error", {
-					error: "InternalServerError",
-					message: "An unknown error occurred",
-				});
-				ws.send(errorBytes);
-				ws.terminate();
+
+				const rows = await this.dbCallbacks.getAllLabels({ after: cursor });
+				try {
+					for (const row of rows) {
+						const { id: seq, ...label } = row as SavedLabel;
+						const bytes = frameToBytes(
+							"message",
+							{ seq, labels: [formatLabel(label)] },
+							"#labels",
+						);
+						ws.send(bytes);
+					}
+				} catch(e) {
+					console.error(e);
+					const errorBytes = frameToBytes("error", {
+						error: "InternalServerError",
+						message: "An unknown error occurred",
+					});
+					ws.send(errorBytes);
+					ws.terminate();
+				}
 			}
+	
+			this.addSubscription("com.atproto.label.subscribeLabels", ws);
+	
+			ws.on("close", () => {
+				this.removeSubscription("com.atproto.label.subscribeLabels", ws);
+			});
 		}
 
-		this.addSubscription("com.atproto.label.subscribeLabels", ws);
-
-		ws.on("close", () => {
-			this.removeSubscription("com.atproto.label.subscribeLabels", ws);
-		});
+		act();
 	};
 
 	/**
@@ -426,7 +366,7 @@ export class LabelerServer {
 			throw new XRPCError(400, { kind: "InvalidRequest", description: "Invalid subject" });
 		}
 
-		const labels = this.createLabels({ uri, cid }, {
+		const labels = await this.createLabels({ uri, cid }, {
 			create: event.createLabelVals,
 			negate: event.negateLabelVals,
 		});

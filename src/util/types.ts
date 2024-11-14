@@ -60,3 +60,83 @@ export type ProcedureHandler<
 export type SubscriptionHandler<
 	T extends RequestGenericInterface["Querystring"] = RequestGenericInterface["Querystring"],
 > = WebsocketHandler<RawServerDefault, RawRequestDefaultExpression, { Querystring: T }>;
+
+/**
+ * Options for the {@link LabelerServer} class.
+ */
+export interface LabelerOptions {
+	/** The DID of the labeler account. */
+	did: string;
+
+	/**
+	 * The private signing key used for the labeler.
+	 * If you don't have a key, generate and set one using {@link plcSetupLabeler}.
+	 */
+	signingKey: string;
+
+	/**
+	 * A function that returns whether a DID is authorized to create labels.
+	 * By default, only the labeler account is authorized.
+	 * @param did The DID to check.
+	 */
+	auth?: (did: string) => boolean | Promise<boolean>;
+	/**
+	 * The path to the SQLite `.db` database file.
+	 * @default labels.db
+	 */
+	dbPath?: string;
+	/**
+	 * Set database callbacks for all labeler operations.
+	 * Only required if you want to bring your own database to LabelerServer
+	 */
+	dbCallbacks?: DBCallbacks;
+}
+
+/**
+ * A collection of optional database callbacks for the LabelerService
+ * This is only necessary if you're bringing a sevice other than the default
+ * sqlite driver, but does make it possible to connect skyware/labeler to any
+ * other scalable database (postgres, mysql, turso, etc)
+ * 
+ * When using your own database, it's important that your label's primary key
+ * be sortable. This is because the cursor uses the primary key for pagination.
+ */
+export type DBCallbacks = {
+	/**
+	 * Connects to the database and performs any migration or initialization tasks
+	 */
+	connect: (options: LabelerOptions) => Promise<void>;
+
+	/**
+	 * Close the db connection cleanly
+	 */
+	close: () => Promise<void>;
+
+	/**
+	 * Creates a label in the database.
+	 * Returns a signed label including the inserted id
+	 */
+	createLabel: (label: SignedLabel) => Promise<SavedLabel>;
+
+	/**
+	 * Finds one or more labels based on the provided query.
+	 * Takes in uri patterns, sources, and a cursor.
+	 */
+	findLabels: (query: {
+		uriPatterns?: string[];
+		sources?: string[];
+		after?: number;
+		limit: number;
+	}) => Promise<SavedLabel[]>;
+
+	/**
+	 * Gets the most recent label in the system. Used to avoid the cursor
+	 * going out of bounds from badly behaving clients
+	 */
+	getLatestLabel: () => Promise<SavedLabel>;
+
+	/**
+	 * Get all labels in the system after a given cursor
+	 */
+	getAllLabels: (query: {after: number}) => Promise<SavedLabel[]>;
+}
