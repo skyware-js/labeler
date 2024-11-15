@@ -145,26 +145,26 @@ export class LabelerServer {
 	 * @throws Error if database initialization fails
 	 */
 	private async initializeDatabase() {
-		await this.db.execute("PRAGMA journal_mode = WAL").catch(() => {
+        await this.db.execute("PRAGMA journal_mode = WAL").catch(() => {
             console.warn("Unable to set WAL mode - performance and concurrent access may be impacted");
         });
 
-		await this.db.execute(`
-           CREATE TABLE IF NOT EXISTS labels (
-               id INTEGER PRIMARY KEY AUTOINCREMENT,
-               src TEXT NOT NULL,
-               uri TEXT NOT NULL,
-               cid TEXT,
-               val TEXT NOT NULL,
-               neg BOOLEAN DEFAULT FALSE,
-               cts DATETIME NOT NULL,
-               exp DATETIME,
-               sig BLOB
-           );
-       `).catch(error => {
-			console.error("Failed to initialize database:", error);
-			throw error;
-		});
+        await this.db.execute(`
+            CREATE TABLE IF NOT EXISTS labels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                src TEXT NOT NULL,
+                uri TEXT NOT NULL,
+                cid TEXT,
+                val TEXT NOT NULL,
+                neg BOOLEAN DEFAULT FALSE,
+                cts DATETIME NOT NULL,
+                exp DATETIME,
+                sig BLOB
+            );
+        `).catch(error => {
+            console.error("Failed to initialize database:", error);
+            throw error;
+        });
 	}
 
 	/**
