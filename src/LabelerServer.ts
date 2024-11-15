@@ -137,14 +137,14 @@ export class LabelerServer {
 		});
 	}
 
-	/**
-	 * Initializes the database with required schema.
-	 * Called during constructor and creates a promise tracked by dbInitLock.
-	 * All database operations should await dbInitLock to ensure initialization is complete.
-	 * @returns Promise that resolves when initialization is complete
-	 * @throws Error if database initialization fails
-	 */
-	private async initializeDatabase() {
+    /**
+     * Initializes the database with required schema.
+     * Called during constructor and creates a promise tracked by dbInitLock.
+     * All database operations should await dbInitLock to ensure initialization is complete.
+     * @returns Promise that resolves when initialization is complete
+     * @throws Error if database initialization fails
+     */
+    private async initializeDatabase() {
         await this.db.execute("PRAGMA journal_mode = WAL").catch(() => {
             console.warn("Unable to set WAL mode - performance and concurrent access may be impacted");
         });
@@ -165,7 +165,7 @@ export class LabelerServer {
             console.error("Failed to initialize database:", error);
             throw error;
         });
-	}
+    }
 
 	/**
 	 * Start the server.
