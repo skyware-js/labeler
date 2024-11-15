@@ -88,6 +88,9 @@ export class LabelerServer {
 	/** The signing key used for the labeler. */
 	#signingKey: Uint8Array;
 
+	/** Promise that resolves when database initialization is complete */
+	private dbInitLock: Promise<void> = Promise.resolve();
+
 	/**
 	 * Create a labeler server.
 	 * @param options Configuration options.
@@ -118,20 +121,7 @@ export class LabelerServer {
 			});
 		}
 
-		this.db.execute("PRAGMA journal_mode = WAL");
-		this.db.execute(`
-			CREATE TABLE IF NOT EXISTS labels (
-				id INTEGER PRIMARY KEY AUTOINCREMENT,
-				src TEXT NOT NULL,
-				uri TEXT NOT NULL,
-				cid TEXT,
-				val TEXT NOT NULL,
-				neg BOOLEAN DEFAULT FALSE,
-				cts DATETIME NOT NULL,
-				exp DATETIME,
-				sig BLOB
-			);
-		`);
+		this.dbInitLock = this.initializeDatabase();
 
 		this.app = fastify();
 		void this.app.register(fastifyWebsocket).then(() => {
@@ -144,6 +134,36 @@ export class LabelerServer {
 			);
 			this.app.get("/xrpc/*", this.unknownMethodHandler);
 			this.app.setErrorHandler(this.errorHandler);
+		});
+	}
+
+	/**
+	 * Initializes the database with required schema.
+	 * Called during constructor and creates a promise tracked by dbInitLock.
+	 * All database operations should await dbInitLock to ensure initialization is complete.
+	 * @returns Promise that resolves when initialization is complete
+	 * @throws Error if database initialization fails
+	 */
+	private async initializeDatabase() {
+		await this.db.execute("PRAGMA journal_mode = WAL").catch(() => {
+            console.warn("Unable to set WAL mode - performance and concurrent access may be impacted");
+        });
+
+		await this.db.execute(`
+           CREATE TABLE IF NOT EXISTS labels (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               src TEXT NOT NULL,
+               uri TEXT NOT NULL,
+               cid TEXT,
+               val TEXT NOT NULL,
+               neg BOOLEAN DEFAULT FALSE,
+               cts DATETIME NOT NULL,
+               exp DATETIME,
+               sig BLOB
+           );
+       `).catch(error => {
+			console.error("Failed to initialize database:", error);
+			throw error;
 		});
 	}
 
@@ -195,6 +215,8 @@ export class LabelerServer {
 	 * @returns The inserted label.
 	 */
 	private async saveLabel(label: UnsignedLabel): Promise<SavedLabel> {
+		await this.dbInitLock;
+
 		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
 
@@ -249,6 +271,8 @@ export class LabelerServer {
 		subject: { uri: string; cid?: string | undefined },
 		labels: { create?: Array<string>; negate?: Array<string> },
 	): Promise<Array<SavedLabel>> {
+		await this.dbInitLock;
+
 		const { uri, cid } = subject;
 		const { create, negate } = labels;
 
@@ -315,6 +339,8 @@ export class LabelerServer {
 	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
 	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.Params> = async (req, res) => {
+		await this.dbInitLock;
+
 		let uriPatterns: Array<string>;
 		if (!req.query.uriPatterns) {
 			uriPatterns = [];
@@ -417,6 +443,8 @@ export class LabelerServer {
 	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).
 	 */
 	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = async (ws, req) => {
+		await this.dbInitLock;
+
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
 
 		if (!Number.isNaN(cursor)) {
