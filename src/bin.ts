@@ -94,6 +94,22 @@ if (command === "setup" || command === "clear") {
 			console.error("Error setting up labeler:", error);
 		}
 	}
+} else if (command === "recreate") {
+	const credentials = await promptCredentials();
+
+	const definitions = await getLabelerLabelDefinitions(credentials);
+	if (!definitions) {
+		console.log("No label definitions found.");
+		process.exit(0);
+	}
+
+	try {
+		await deleteLabelerDeclaration(credentials);
+		await declareLabeler(credentials, definitions);
+		console.log("Labeler declaration recreated.");
+	} catch (error) {
+		console.error("Error recreating labeler declaration:", error);
+	}
 } else if (
 	command === "label"
 	&& (subcommand === "add" || subcommand === "delete" || subcommand === "edit")
@@ -180,6 +196,9 @@ if (command === "setup" || command === "clear") {
 	console.log("Commands:");
 	console.log("  setup - Initialize an account as a labeler.");
 	console.log("  clear - Restore a labeler account to normal.");
+	console.log(
+		"  recreate - Recreate the labeler declaration (recommended if labels are not showing up).",
+	);
 	console.log("  label add - Add new label declarations to a labeler account.");
 	console.log("  label delete - Remove label declarations from a labeler account.");
 	console.log("  label edit - Bulk edit label definitions.");

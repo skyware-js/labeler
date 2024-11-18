@@ -17,8 +17,10 @@ Usage: npx @skyware/labeler [command]
 Commands:
   setup - Initialize an account as a labeler.
   clear - Restore a labeler account to normal.
+  recreate - Recreate the labeler declaration (recommended if labels are not showing up).
   label add - Add new label declarations to a labeler account.
   label delete - Remove label declarations from a labeler account.
+  label edit - Bulk edit label definitions.
 ```
 
 For a full guide to setting up a labeler, see [Getting Started](https://skyware.js.org/guides/labeler/introduction/getting-started).
