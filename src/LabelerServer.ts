@@ -567,7 +567,7 @@ export class LabelerServer {
 	 * Handler for the health check endpoint.
 	 */
 	healthHandler: QueryHandler = async (_req, res) => {
-		const VERSION = "0.1.13";
+		const VERSION = "0.2.0";
 		try {
 			await this.db.execute({ sql: "SELECT 1", args: [] });
 			return res.send({ version: VERSION });
