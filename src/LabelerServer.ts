@@ -6,12 +6,12 @@ import type {
 	ToolsOzoneModerationEmitEvent,
 } from "@atcute/client/lexicons";
 import { fastifyWebsocket } from "@fastify/websocket";
+import { Client, createClient } from "@libsql/client";
 import fastify, {
 	type FastifyInstance,
 	type FastifyListenOptions,
 	type FastifyRequest,
 } from "fastify";
-import { Client, createClient } from "@libsql/client";
 import type { WebSocket } from "ws";
 import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
 import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
@@ -50,6 +50,7 @@ export interface LabelerOptions {
 	 * @param did The DID to check.
 	 */
 	auth?: (did: string) => boolean | Promise<boolean>;
+
 	/**
 	 * The path to the SQLite `.db` database file.
 	 * @default labels.db
@@ -57,16 +58,16 @@ export interface LabelerOptions {
 	dbPath?: string;
 
 	/**
-	 * The URL of the database.
-	 * If provided, dbPath is ignored.
+	 * The URL of the remote SQLite database.
+	 * If provided, {@link dbPath} is ignored.
 	 */
 	dbUrl?: string;
 
 	/**
-	 * The authentication token for the database.
-	 * Required if url is provided.
+	 * The authentication token for the remote SQLite database.
+	 * Required if {@link dbUrl} is provided.
 	 */
-	dbAuthToken?: string;
+	dbToken?: string;
 }
 
 export class LabelerServer {
@@ -88,8 +89,11 @@ export class LabelerServer {
 	/** The signing key used for the labeler. */
 	#signingKey: Uint8Array;
 
-	/** Promise that resolves when database initialization is complete */
-	private dbInitLock: Promise<void> = Promise.resolve();
+	/**
+	 * Promise that resolves when database initialization is complete.
+	 * This should be awaited before any database operations.
+	 */
+	private readonly dbInitLock?: Promise<void>;
 
 	/**
 	 * Create a labeler server.
@@ -108,17 +112,14 @@ export class LabelerServer {
 		}
 
 		if (options.dbUrl) {
-			if (!options.dbAuthToken) {
-				throw new Error("authToken is required when using a remote database URL");
+			if (!options.dbToken) {
+				throw new Error(
+					"The `dbToken` option is required when using a remote database URL.",
+				);
 			}
-			this.db = createClient({
-				url: options.dbUrl,
-				authToken: options.dbAuthToken,
-			});
+			this.db = createClient({ url: options.dbUrl, authToken: options.dbToken });
 		} else {
-			this.db = createClient({
-				url: "file:" + (options.dbPath ?? "labels.db"),
-			});
+			this.db = createClient({ url: "file:" + (options.dbPath ?? "labels.db") });
 		}
 
 		this.dbInitLock = this.initializeDatabase();
@@ -138,15 +139,14 @@ export class LabelerServer {
 	}
 
 	/**
-	 * Initializes the database with required schema.
-	 * Called during constructor and creates a promise tracked by dbInitLock.
-	 * All database operations should await dbInitLock to ensure initialization is complete.
-	 * @returns Promise that resolves when initialization is complete
-	 * @throws Error if database initialization fails
+	 * Initializes the database with the required schema.
+	 * @returns A promise that resolves when initialization is complete
 	 */
 	private async initializeDatabase() {
 		await this.db.execute("PRAGMA journal_mode = WAL").catch(() => {
-			console.warn("Unable to set WAL mode - performance and concurrent access may be impacted");
+			console.warn(
+				"Unable to set WAL mode — performance and concurrent access may be impacted.",
+			);
 		});
 
 		await this.db.execute(`
@@ -161,7 +161,7 @@ export class LabelerServer {
 				exp DATETIME,
 				sig BLOB
 			);
-		`).catch(error => {
+		`).catch((error) => {
 			console.error("Failed to initialize database:", error);
 			throw error;
 		});
@@ -226,16 +226,7 @@ export class LabelerServer {
     		RETURNING id
 		`;
 
-		const args = [
-			src,
-			uri,
-			cid || null,
-			val,
-			neg ? 1 : 0,
-			cts,
-			exp || null,
-			sig
-		];
+		const args = [src, uri, cid || null, val, neg ? 1 : 0, cts, exp || null, sig];
 
 		const result = await this.db.execute({ sql, args });
 		if (!result.rows.length) throw new Error("Failed to insert label");
@@ -421,7 +412,7 @@ export class LabelerServer {
 			args: params,
 		});
 
-		const rows = result.rows.map(row => ({
+		const rows = result.rows.map((row) => ({
 			id: Number(row.id),
 			src: row.src as At.DID,
 			uri: row.uri as string,
@@ -430,7 +421,7 @@ export class LabelerServer {
 			cts: row.cts as string,
 			...(row.cid ? { cid: row.cid as string } : {}),
 			...(row.exp ? { exp: row.exp as string } : {}),
-			...(row.sig ? { sig: row.sig as Uint8Array } : {})
+			...(row.sig ? { sig: row.sig as Uint8Array } : {}),
 		}));
 		const labels = rows.map(formatLabel);
 
@@ -450,7 +441,7 @@ export class LabelerServer {
 		if (!Number.isNaN(cursor)) {
 			const latest = await this.db.execute({
 				sql: "SELECT MAX(id) AS id FROM labels",
-				args: []
+				args: [],
 			});
 			if (cursor > (Number(latest.rows[0]?.id) ?? 0)) {
 				const errorBytes = frameToBytes("error", {
@@ -468,7 +459,7 @@ export class LabelerServer {
 						WHERE id > ?
 						ORDER BY id ASC
 					`,
-					args: [cursor]
+					args: [cursor],
 				});
 
 				for (const row of result.rows) {
@@ -481,13 +472,12 @@ export class LabelerServer {
 						cts: cts as string,
 						...(cid ? { cid: cid as string } : {}),
 						...(exp ? { exp: exp as string } : {}),
-						...(sig ? { sig: sig as Uint8Array } : {})
+						...(sig ? { sig: sig as Uint8Array } : {}),
 					};
-					const bytes = frameToBytes(
-						"message",
-						{ seq: Number(seq), labels: [formatLabel(label)] },
-						"#labels",
-					);
+					const bytes = frameToBytes("message", {
+						seq: Number(seq),
+						labels: [formatLabel(label)],
+					}, "#labels");
 					ws.send(bytes);
 				}
 			} catch (e) {
