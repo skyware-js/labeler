@@ -133,6 +133,7 @@ export class LabelerServer {
 				{ websocket: true },
 				this.subscribeLabelsHandler,
 			);
+			this.app.get("/xrpc/_health", this.healthHandler);
 			this.app.get("/xrpc/*", this.unknownMethodHandler);
 			this.app.setErrorHandler(this.errorHandler);
 		});
@@ -560,6 +561,19 @@ export class LabelerServer {
 				createdAt: new Date().toISOString(),
 			} satisfies ToolsOzoneModerationEmitEvent.Output,
 		);
+	};
+
+	/**
+	 * Handler for the health check endpoint.
+	 */
+	healthHandler: QueryHandler = async (_req, res) => {
+		const VERSION = "0.1.13";
+		try {
+			await this.db.execute({ sql: "SELECT 1", args: [] });
+			return res.send({ version: VERSION });
+		} catch (e) {
+			return res.status(503).send({ version: VERSION, error: "Service Unavailable" });
+		}
 	};
 
 	/**
