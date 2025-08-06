@@ -6,6 +6,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import prompt from "prompts";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 import {
 	declareLabeler,
 	deleteLabelerDeclaration,
@@ -19,11 +21,56 @@ import {
 import { loginAgent } from "./scripts/util.js";
 import { resolveHandle } from "./util/resolveHandle.js";
 
-const argv = process.argv.slice(2);
-const [command, subcommand, ...args] = argv;
+// Parse command line arguments
+const argv = await yargs(hideBin(process.argv)).command(
+	"setup",
+	"Initialize an account as a labeler",
+	(yargs) => {
+		return yargs.option("did", { type: "string", description: "DID of the labeler account" })
+			.option("password", { type: "string", description: "Account password" }).option("pds", {
+				type: "string",
+				description: "PDS URL",
+				default: "https://bsky.social",
+			}).option("endpoint", {
+				type: "string",
+				description: "HTTPS URL where labeler will be hosted",
+			}).option("signing-key", {
+				type: "string",
+				description: "Private signing key (hex or base64)",
+			}).option("labels-config", {
+				type: "string",
+				description: "Path to labels configuration JSON file",
+			});
+	},
+).command("clear", "Restore a labeler account to normal", (yargs) => {
+	return yargs.option("did", { type: "string", description: "DID of the labeler account" })
+		.option("password", { type: "string", description: "Account password" }).option("pds", {
+			type: "string",
+			description: "PDS URL",
+			default: "https://bsky.social",
+		});
+}).command(
+	"recreate",
+	"Recreate the labeler declaration",
+	(yargs) => {
+		return yargs.option("did", { type: "string", description: "DID of the labeler account" })
+			.option("password", { type: "string", description: "Account password" }).option("pds", {
+				type: "string",
+				description: "PDS URL",
+				default: "https://bsky.social",
+			});
+	},
+).command("label", "Manage label definitions", (yargs) => {
+	return yargs.command("add", "Add new label declarations").command(
+		"delete [identifiers..]",
+		"Remove label declarations",
+	).command("edit", "Bulk edit label definitions");
+}).help().argv;
+
+const [command, subcommand, ...args] = argv._;
 
 if (command === "setup" || command === "clear") {
-	const credentials = await promptCredentials();
+	const credentials = await promptCredentials(argv);
 
 	await plcRequestToken(credentials);
 
@@ -33,33 +80,41 @@ if (command === "setup" || command === "clear") {
 		message: "You will receive a confirmation code via email. Code:",
 	}, { onCancel: () => process.exit(1) });
 
+	// Output PLC token for external processing
+	if (command === "setup") {
+		console.log(`PLC_TOKEN=${plcToken}`);
+	}
+
 	if (command === "setup") {
 		try {
-			const { endpoint, privateKey } = await prompt([{
-				type: "text",
-				name: "endpoint",
-				message: "URL where the labeler will be hosted:",
-				validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
-			}, {
-				type: "text",
-				name: "privateKey",
-				message: "Enter a signing key to use, or leave blank to generate a new one:",
+			// Get setup parameters from CLI args or prompt
+			const endpoint = argv.endpoint as string
+				|| await promptForValue(
+					"URL where the labeler will be hosted:",
+					(value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+				);
 
-				validate: (value) => {
-					if (!value) return true;
-					if (/^[0-9a-f]*$/.test(value)) return true;
-					if (/^[A-Za-z0-9+/=]+$/.test(value)) return true;
-					return "Must be a hex or base64-encoded string.";
-				},
-			}], { onCancel: () => process.exit(1) });
+			const privateKey = argv.signingKey as string
+				|| await promptForValue(
+					"Enter a signing key to use, or leave blank to generate a new one:",
+					(value) => {
+						if (!value) return true;
+						if (/^[0-9a-f]*$/.test(value)) return true;
+						if (/^[A-Za-z0-9+/=]+$/.test(value)) return true;
+						return "Must be a hex or base64-encoded string.";
+					},
+				);
 
-			const operation = await plcSetupLabeler({
+			const setupOptions: any = {
 				...credentials,
 				plcToken,
 				endpoint,
-				privateKey,
 				overwriteExistingKey: true,
-			});
+			};
+			if (privateKey) {
+				setupOptions.privateKey = privateKey;
+			}
+			const operation = await plcSetupLabeler(setupOptions);
 
 			// If a new key was generated and a verification method was added,
 			// plcSetupLabeler logged the private key to the console.
@@ -69,10 +124,40 @@ if (command === "setup" || command === "clear") {
 				);
 			}
 
-			console.log(
-				"Next, you will need to define a name, description, and settings for each of the labels you want this labeler to apply.",
-			);
-			const labelDefinitions = await promptLabelDefinitions();
+			// Handle labels from config file or prompt
+			let labelDefinitions: Array<ComAtprotoLabelDefs.LabelValueDefinition> = [];
+
+			if (argv.labelsConfig) {
+				try {
+					const configContent = await fs.readFile(argv.labelsConfig as string, "utf8");
+					const labelsConfig = JSON.parse(configContent);
+					labelDefinitions = labelsConfig.map((config: any) => ({
+						identifier: config.identifier,
+						adultOnly: config.adultOnly,
+						severity: config.severity,
+						blurs: config.blurs,
+						defaultSetting: config.defaultSetting,
+						locales: [{
+							lang: "en",
+							name: config.name,
+							description: config.description,
+						}],
+					}));
+					const labelsConfigPath = argv.labelsConfig as string;
+					console.log(
+						`Loaded ${labelDefinitions.length} label definitions from ${labelsConfigPath}`,
+					);
+				} catch (error) {
+					console.error(`Error reading labels config file: ${error}`);
+					process.exit(1);
+				}
+			} else {
+				console.log(
+					"Next, you will need to define a name, description, and settings for each of the labels you want this labeler to apply.",
+				);
+				labelDefinitions = await promptLabelDefinitions();
+			}
+
 			if (labelDefinitions.length) {
 				await declareLabeler(credentials, labelDefinitions, true);
 			} else {
@@ -95,7 +180,7 @@ if (command === "setup" || command === "clear") {
 		}
 	}
 } else if (command === "recreate") {
-	const credentials = await promptCredentials();
+	const credentials = await promptCredentials(argv);
 
 	const definitions = await getLabelerLabelDefinitions(credentials);
 	if (!definitions) {
@@ -114,7 +199,7 @@ if (command === "setup" || command === "clear") {
 	command === "label"
 	&& (subcommand === "add" || subcommand === "delete" || subcommand === "edit")
 ) {
-	const credentials = await promptCredentials();
+	const credentials = await promptCredentials(argv);
 	const labelDefinitions = await getLabelerLabelDefinitions(credentials) ?? [];
 
 	if (subcommand === "add") {
@@ -143,7 +228,7 @@ if (command === "setup" || command === "clear") {
 		}
 
 		const identifiers = args.length
-			? args
+			? args as string[]
 			: (await prompt({
 				type: "multiselect",
 				name: "identifiers",
@@ -204,35 +289,48 @@ if (command === "setup" || command === "clear") {
 	console.log("  label edit - Bulk edit label definitions.");
 }
 
-async function promptCredentials(): Promise<LoginCredentials> {
-	let did: string | undefined;
-	while (!did) {
-		const { did: didOrHandle } = await prompt({
-			type: "text",
-			name: "did",
-			message: "DID or handle of the account to use:",
-			validate: (value) =>
-				value.startsWith("did:") || value.includes(".") || "Invalid DID or handle.",
-			format: (value) => value.startsWith("@") ? value.slice(1) : value,
-		}, { onCancel: () => process.exit(1) });
-		if (!didOrHandle) continue;
-		did = didOrHandle.startsWith("did:") ? didOrHandle : await resolveHandle(didOrHandle);
-		if (!did) {
-			console.log(`Could not resolve "${didOrHandle}" to a valid account. Please try again.`);
+async function promptCredentials(argv: any): Promise<LoginCredentials> {
+	// Use CLI args if provided, otherwise prompt
+	let did: string | undefined = argv.did;
+
+	if (!did) {
+		while (!did) {
+			const { did: didOrHandle } = await prompt({
+				type: "text",
+				name: "did",
+				message: "DID or handle of the account to use:",
+				validate: (value) =>
+					value.startsWith("did:") || value.includes(".") || "Invalid DID or handle.",
+				format: (value) => value.startsWith("@") ? value.slice(1) : value,
+			}, { onCancel: () => process.exit(1) });
+			if (!didOrHandle) continue;
+			did = didOrHandle.startsWith("did:") ? didOrHandle : await resolveHandle(didOrHandle);
+			if (!did) {
+				console.log(
+					`Could not resolve "${didOrHandle}" to a valid account. Please try again.`,
+				);
+			}
 		}
 	}
 
-	const { password, pds } = await prompt([{
-		type: "password",
-		name: "password",
-		message: "Account password (cannot be an app password):",
-	}, {
-		type: "text",
-		name: "pds",
-		message: "URL of the PDS where the account is located:",
-		initial: "https://bsky.social",
-		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
-	}], { onCancel: () => process.exit(1) });
+	let password: string = argv.password;
+	let pds: string = argv.pds || "https://bsky.social";
+
+	if (!password) {
+		const result = await prompt([{
+			type: "password",
+			name: "password",
+			message: "Account password (cannot be an app password):",
+		}, {
+			type: "text",
+			name: "pds",
+			message: "URL of the PDS where the account is located:",
+			initial: "https://bsky.social",
+			validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
+		}], { onCancel: () => process.exit(1) });
+		password = result.password;
+		pds = result.pds;
+	}
 
 	const credentials: LoginCredentials = { identifier: did, password, pds };
 
@@ -253,6 +351,16 @@ async function promptCredentials(): Promise<LoginCredentials> {
 		}
 	}
 	return credentials;
+}
+
+async function promptForValue(
+	message: string,
+	validate?: (value: string) => boolean | string,
+): Promise<string> {
+	const { value } = await prompt({ type: "text", name: "value", message, validate }, {
+		onCancel: () => process.exit(1),
+	});
+	return value || "";
 }
 
 async function confirm(message: string) {
