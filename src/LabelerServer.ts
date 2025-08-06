@@ -235,7 +235,7 @@ export class LabelerServer {
 		const id = Number(result.rows[0].id);
 
 		this.emitLabel(id, signed);
-		return { id, ...signed };
+		return { id, ...signed, sig: signed.sig.buffer as ArrayBuffer };
 	}
 
 	/**
@@ -422,7 +422,7 @@ export class LabelerServer {
 			cts: row.cts as string,
 			...(row.cid ? { cid: row.cid as string } : {}),
 			...(row.exp ? { exp: row.exp as string } : {}),
-			...(row.sig ? { sig: row.sig as Uint8Array } : {}),
+			...(row.sig ? { sig: new Uint8Array(row.sig as ArrayBuffer) } : {}),
 		}));
 		const labels = rows.map(formatLabel);
 
@@ -473,7 +473,7 @@ export class LabelerServer {
 						cts: cts as string,
 						...(cid ? { cid: cid as string } : {}),
 						...(exp ? { exp: exp as string } : {}),
-						...(sig ? { sig: sig as Uint8Array } : {}),
+						...(sig ? { sig: new Uint8Array(sig as ArrayBuffer) } : {}),
 					};
 					const bytes = frameToBytes("message", {
 						seq: Number(seq),

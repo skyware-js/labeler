@@ -1,14 +1,14 @@
 {
-	"name": "@skyware/labeler",
+	"name": "johnwarden-labeler",
 	"type": "module",
-	"description": "A lightweight alternative to Ozone for operating an atproto labeler.",
-	"version": "0.2.0",
+	"description": "A fork of @skyware/labeler with CLI argument support for non-interactive setup.",
+	"version": "0.2.2",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
 	"bin": "dist/bin.js",
 	"license": "MPL-2.0",
-	"repository": "https://github.com/skyware-js/labeler",
-	"homepage": "https://skyware.js.org/docs/labeler",
+	"repository": "https://github.com/johnwarden/labeler",
+	"homepage": "https://github.com/johnwarden/labeler",
 	"keywords": [
 		"bluesky",
 		"labeler",
@@ -44,9 +44,11 @@
 		"@libsql/client": "^0.14.0",
 		"@noble/curves": "^1.6.0",
 		"@noble/hashes": "^1.5.0",
+		"@types/yargs": "^17.0.33",
 		"fastify": "^4.28.1",
 		"prompts": "^2.4.2",
-		"uint8arrays": "^5.1.0"
+		"uint8arrays": "^5.1.0",
+		"yargs": "^18.0.0"
 	},
 	"files": [
 		"dist"
