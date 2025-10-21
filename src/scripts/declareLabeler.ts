@@ -1,9 +1,7 @@
 import "@atcute/bluesky/lexicons";
-import {
-	AppBskyLabelerService,
-	ComAtprotoLabelDefs,
-	ComAtprotoRepoCreateRecord,
-} from "@atcute/client/lexicons";
+import { ComAtprotoLabelDefs, ComAtprotoRepoPutRecord } from "@atcute/atproto";
+import { AppBskyLabelerService } from "@atcute/bluesky";
+import { InferXRPCBodyInput, is } from "@atcute/lexicons";
 import { loginAgent, LoginCredentials } from "./util.js";
 
 /**
@@ -20,34 +18,72 @@ export async function declareLabeler(
 	const { agent, session } = await loginAgent(credentials);
 	const labelValues = labelDefinitions.map(({ identifier }) => identifier);
 
-	const existing = await getLabelerLabelDefinitions(credentials);
-	if (existing?.length && !overwriteExisting) {
-		if (overwriteExisting === false) return;
-		else if (overwriteExisting === undefined) {
-			throw new Error(
-				"Label definitions already exist. Use `overwriteExisting: true` to update them, or `overwriteExisting: false` to silence this error.",
+	const existingService = (await getLabelerService(credentials)).service;
+	if (existingService) {
+		if (!Array.isArray(existingService.reasonTypes) && overwriteExisting !== true) {
+			console.warn(
+				"Label service definition is missing reasonTypes, you should recreate the labeller to declare that it does not receive reports.",
 			);
+		}
+
+		const existingLabelDefinitions = getDefinitions(existingService);
+
+		if (existingLabelDefinitions && existingLabelDefinitions.length && !overwriteExisting) {
+			if (overwriteExisting === false) return;
+			else if (overwriteExisting === undefined) {
+				throw new Error(
+					"Label definitions already exist. Use `overwriteExisting: true` to update them, or `overwriteExisting: false` to silence this error.",
+				);
+			}
 		}
 	}
 
-	const data = {
+	const record: AppBskyLabelerService.Main = {
+		$type: "app.bsky.labeler.service",
+		policies: { labelValues, labelValueDefinitions: labelDefinitions },
+		// We don't implement the com.atproto.moderation.createReport procedure,
+		// so need to disable reports:
+		reasonTypes: [],
+		subjectTypes: [],
+		subjectCollections: [],
+		createdAt: new Date().toISOString(),
+	};
+
+	const data: InferXRPCBodyInput<ComAtprotoRepoPutRecord.mainSchema["input"]> = {
 		collection: "app.bsky.labeler.service",
 		rkey: "self",
 		repo: session.did,
-		record: {
-			$type: "app.bsky.labeler.service",
-			policies: { labelValues, labelValueDefinitions: labelDefinitions },
-			createdAt: new Date().toISOString(),
-		} satisfies AppBskyLabelerService.Record,
+		record,
 		validate: true,
-	} satisfies ComAtprotoRepoCreateRecord.Input;
+	};
 
 	// We check if existing is truthy because an empty array means the record exists, but contains no definitions.
-	if (existing) {
-		await agent.call("com.atproto.repo.putRecord", { data });
+	if (existingService) {
+		await agent.post("com.atproto.repo.putRecord", { input: data });
 	} else {
-		await agent.call("com.atproto.repo.createRecord", { data });
+		await agent.post("com.atproto.repo.createRecord", { input: data });
 	}
+}
+
+export async function getLabelerService(
+	credentials: LoginCredentials,
+): Promise<{ service?: AppBskyLabelerService.Main }> {
+	const { agent, session } = await loginAgent(credentials);
+	const response = await agent.get("com.atproto.repo.getRecord", {
+		params: { collection: "app.bsky.labeler.service", rkey: "self", repo: session.did },
+	});
+
+	if (response.ok && is(AppBskyLabelerService.mainSchema, response.data)) {
+		return { service: response.data };
+	}
+
+	return {};
+}
+
+function getDefinitions(
+	service?: AppBskyLabelerService.Main,
+): ComAtprotoLabelDefs.LabelValueDefinition[] | undefined {
+	return service?.policies?.labelValueDefinitions;
 }
 
 /**
@@ -58,12 +94,8 @@ export async function declareLabeler(
 export async function getLabelerLabelDefinitions(
 	credentials: LoginCredentials,
 ): Promise<Array<ComAtprotoLabelDefs.LabelValueDefinition> | null> {
-	const { agent, session } = await loginAgent(credentials);
-	const { data: { value: declaration } } = await agent.get("com.atproto.repo.getRecord", {
-		params: { collection: "app.bsky.labeler.service", rkey: "self", repo: session.did },
-	}).catch(() => ({ data: { value: {} } }));
-	// @ts-expect-error — declaration is unknown
-	return declaration?.policies?.labelValueDefinitions ?? null;
+	const response = await getLabelerService(credentials);
+	return getDefinitions(response.service) ?? null;
 }
 
 /**
@@ -84,7 +116,7 @@ export async function setLabelerLabelDefinitions(
  */
 export async function deleteLabelerDeclaration(credentials: LoginCredentials): Promise<void> {
 	const { agent, session } = await loginAgent(credentials);
-	await agent.call("com.atproto.repo.deleteRecord", {
-		data: { collection: "app.bsky.labeler.service", rkey: "self", repo: session.did },
+	await agent.post("com.atproto.repo.deleteRecord", {
+		input: { collection: "app.bsky.labeler.service", rkey: "self", repo: session.did },
 	});
 }

@@ -1,4 +1,7 @@
-import { AtpSessionData, CredentialManager, XRPC } from "@atcute/client";
+import type {} from "@atcute/bluesky";
+import type {} from "@atcute/atproto";
+
+import { AtpSessionData, Client, CredentialManager } from "@atcute/client";
 
 export interface LoginCredentials {
 	/** The URL of the PDS where the account is located. Defaults to "https://bsky.social". */
@@ -11,22 +14,22 @@ export interface LoginCredentials {
 	code?: string;
 }
 
-let xrpc: XRPC | undefined;
+let client: Client;
 let credentialManager: CredentialManager | undefined;
 
 export async function loginAgent(
 	{ pds, ...credentials }: LoginCredentials,
-): Promise<{ agent: XRPC; session: AtpSessionData }> {
+): Promise<{ agent: Client; session: AtpSessionData }> {
 	credentialManager ??= new CredentialManager({ service: pds || "https://bsky.social" });
-	xrpc ??= new XRPC({ handler: credentialManager });
+	client ??= new Client({ handler: credentialManager });
 
 	if (
 		credentialManager.session && credentialsMatchSession(credentials, credentialManager.session)
 	) {
-		return { agent: xrpc, session: credentialManager.session };
+		return { agent: client, session: credentialManager.session };
 	}
 	const session = await credentialManager.login(credentials);
-	return { agent: xrpc, session };
+	return { agent: client, session };
 }
 
 const credentialsMatchSession = (credentials: LoginCredentials, session: AtpSessionData) =>

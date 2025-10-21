@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { XRPCError } from "@atcute/client";
-import type { ComAtprotoLabelDefs } from "@atcute/client/lexicons";
+import type { ComAtprotoLabelDefs } from "@atcute/atproto";
+import { XRPCError } from "@atcute/xrpc-server";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -239,7 +239,7 @@ async function promptCredentials(): Promise<LoginCredentials> {
 	try {
 		await loginAgent(credentials);
 	} catch (error) {
-		if (error instanceof XRPCError && error.kind === "AuthFactorTokenRequired") {
+		if (error instanceof XRPCError && error.error === "AuthFactorTokenRequired") {
 			const { code } = await prompt({
 				type: "text",
 				name: "code",

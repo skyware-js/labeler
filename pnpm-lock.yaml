@@ -8,18 +8,33 @@ importers:
 
   .:
     dependencies:
+      '@atcute/atproto':
+        specifier: ^3.1.8
+        version: 3.1.8
       '@atcute/bluesky':
-        specifier: ^1.0.7
-        version: 1.0.7(@atcute/client@2.0.3)
+        specifier: ^3.2.8
+        version: 3.2.8
       '@atcute/cbor':
         specifier: ^1.0.2
         version: 1.0.2
       '@atcute/client':
-        specifier: ^2.0.3
-        version: 2.0.3
+        specifier: ^4.0.5
+        version: 4.0.5
+      '@atcute/identity':
+        specifier: ^1.1.1
+        version: 1.1.1
+      '@atcute/identity-resolver':
+        specifier: ^1.1.4
+        version: 1.1.4(@atcute/identity@1.1.1)
+      '@atcute/lexicons':
+        specifier: ^1.2.2
+        version: 1.2.2
       '@atcute/ozone':
-        specifier: ^1.0.4
-        version: 1.0.4(@atcute/bluesky@1.0.7(@atcute/client@2.0.3))(@atcute/client@2.0.3)
+        specifier: ^3.1.10
+        version: 3.1.10
+      '@atcute/xrpc-server':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@fastify/websocket':
         specifier: ^10.0.1
         version: 10.0.1
@@ -38,6 +53,9 @@ importers:
       prompts:
         specifier: ^2.4.2
         version: 2.4.2
+      syntax:
+        specifier: link:@atcute/lexicons/syntax
+        version: link:@atcute/lexicons/syntax
       uint8arrays:
         specifier: ^5.1.0
         version: 5.1.0
@@ -73,13 +91,14 @@ packages:
     resolution: {integrity: sha512-1Yjs2SvM8TflER/OD3cOjhWWOZb58A2t7wpE2S9XfBYTiIl+XFhQG2bjy4Pu1I+EAlCNUzRDYDdFwFYUKvXcIA==}
     engines: {node: '>=0.10.0'}
 
+  '@atcute/atproto@3.1.8':
+    resolution: {integrity: sha512-Miu+S7RSgAYbmQWtHJKfSFUN5Kliqoo4YH0rILPmBtfmlZieORJgXNj9oO/Uive0/ulWkiRse07ATIcK8JxMnw==}
+
   '@atcute/base32@1.0.0':
     resolution: {integrity: sha512-Mbjsv6kd/ymvDMGjCoh9eqhlpFsoJ6zYguU6xtKxqh1wGhe5rvBOfMRXsEqcp7srn8Bfp8QhevqLgmwrWvzqrA==}
 
-  '@atcute/bluesky@1.0.7':
-    resolution: {integrity: sha512-2jPHzl7WbcqRtcAXanJy4Lp638ujqnoGmPCPmBlmpEDP34D7EVKQqjN/mlvglb5n539dThA9xlSgIS8yOxwzDA==}
-    peerDependencies:
-      '@atcute/client': ^1.0.0 || ^2.0.0
+  '@atcute/bluesky@3.2.8':
+    resolution: {integrity: sha512-wxEnSOvX7nLH4sVzX9YFCkaNEWIDrTv3pTs6/x4NgJ3AJ3XJio0OYPM8tR7wAgsklY6BHvlAgt3yoCDK0cl1CA==}
 
   '@atcute/cbor@1.0.2':
     resolution: {integrity: sha512-yuLzYCwWIv5qHwmecNqaWZE2ZQ7YDnX61l/exBGqtCO9wy70NLetembjukagJOn7beJ6Uf6mW90cMpETYCItLw==}
@@ -87,17 +106,44 @@ packages:
   '@atcute/cid@1.0.1':
     resolution: {integrity: sha512-92Cor2ruS7y+/wdFutp2qFDjJj4mTcO7HdZ/BhTQRg/nzWdAnTann5DAmYjD+IWRaXd5SYk4dOZnDt4lsGofzg==}
 
-  '@atcute/client@2.0.3':
-    resolution: {integrity: sha512-j9GryA5l+4F0BTQWa6/1XmsuSPSq+bqNCY3mrHUGD592hMqUZxgpYDLgRWL+719V287AW/56AwvFYlbjlENp7A==}
+  '@atcute/client@4.0.5':
+    resolution: {integrity: sha512-R8Qen8goGmEkynYGg2m6XFlVmz0GTDvQ+9w+4QqOob+XMk8/WDpF4aImev7WKEde/rV2gjcqW7zM8E6W9NShDA==}
 
-  '@atcute/ozone@1.0.4':
-    resolution: {integrity: sha512-28fL6EQoKRw4PswQOBNC83TZLqbjAO3oKlwIvinQ8d2qx7BCUUtpq19MZqp7X1bSz2oTanlDqoE+NTdEDpDRYA==}
+  '@atcute/crypto@2.2.5':
+    resolution: {integrity: sha512-9CbQ9cJ68XewsbLrgdmWQS2uDD9D0hizWFJ3OOZ16TCuARREmzKEpFgHlMxPswR3bDxjwfiXzmYUlHaTqsnxRQ==}
+
+  '@atcute/identity-resolver@1.1.4':
+    resolution: {integrity: sha512-/SVh8vf2cXFJenmBnGeYF2aY3WGQm3cJeew5NWTlkqoy3LvJ5wkvKq9PWu4Tv653VF40rPOp6LOdVr9Fa+q5rA==}
     peerDependencies:
-      '@atcute/bluesky': ^1.0.0
-      '@atcute/client': ^1.0.0 || ^2.0.0
+      '@atcute/identity': ^1.0.0
+
+  '@atcute/identity@1.1.1':
+    resolution: {integrity: sha512-zax42n693VEhnC+5tndvO2KLDTMkHOz8UExwmklvJv7R9VujfEwiSWhcv6Jgwb3ellaG8wjiQ1lMOIjLLvwh0Q==}
+
+  '@atcute/lexicons@1.2.2':
+    resolution: {integrity: sha512-bgEhJq5Z70/0TbK5sx+tAkrR8FsCODNiL2gUEvS5PuJfPxmFmRYNWaMGehxSPaXWpU2+Oa9ckceHiYbrItDTkA==}
+
+  '@atcute/multibase@1.1.6':
+    resolution: {integrity: sha512-HBxuCgYLKPPxETV0Rot4VP9e24vKl8JdzGCZOVsDaOXJgbRZoRIF67Lp0H/OgnJeH/Xpva8Z5ReoTNJE5dn3kg==}
+
+  '@atcute/ozone@3.1.10':
+    resolution: {integrity: sha512-7Om7sTQfzyHk6OCYhN0YtKcM592iWFeJfmakNX/X8XibvJaYHehoBBt12L0qykqKZSUx0Ha9yiU+OCQ26xWm7A==}
+
+  '@atcute/uint8array@1.0.5':
+    resolution: {integrity: sha512-XLWWxoR2HNl2qU+FCr0rp1APwJXci7HnzbOQLxK55OaMNBXZ19+xNC5ii4QCsThsDxa4JS/JTzuiQLziITWf2Q==}
+
+  '@atcute/util-fetch@1.0.3':
+    resolution: {integrity: sha512-f8zzTb/xlKIwv2OQ31DhShPUNCmIIleX6p7qIXwWwEUjX6x8skUtpdISSjnImq01LXpltGV5y8yhV4/Mlb7CRQ==}
 
   '@atcute/varint@1.0.0':
     resolution: {integrity: sha512-NEBOGkdaDY8cjlDg49kefIsRM7iv/4oReEnOr3bN4tF3IxBGdc6Io1NCJz1xNBNdUL+3VDG3CKHiRji91HXaTg==}
+
+  '@atcute/xrpc-server@0.1.2':
+    resolution: {integrity: sha512-smBmWGEM6nBTq2ozONXBCJtvFzTEnJgH6cALGfq26k38k/OmX6mpMvr5/Z0Iuc6+rNG2j3YY/kOSl+z3c8JOVg==}
+
+  '@badrap/valita@0.4.6':
+    resolution: {integrity: sha512-4kdqcjyxo/8RQ8ayjms47HCWZIF5981oE5nIenbfThKDxWXtEHKipAOWlflpPJzZx9y/JWYQkp18Awr7VuepFg==}
+    engines: {node: '>= 18'}
 
   '@dprint/darwin-arm64@0.41.0':
     resolution: {integrity: sha512-P9PtcQI0mrI4U6yyd+/iI664BHSqC9KTS6ogq0ptEdnLtlaWzf09D1nv6FBaHiG9m3conuBRlPsoUqt3j6PZ2w==}
@@ -235,6 +281,9 @@ packages:
     resolution: {integrity: sha512-1j6kQFb7QRru7eKN3ZDvRcP13rugwdxZqCjbiAVZfIJwgj2A65UmT4TgARXGlXgnRkORLTDTrO19ZErt7+QXgA==}
     engines: {node: ^14.21.3 || >=16}
 
+  '@noble/secp256k1@2.3.0':
+    resolution: {integrity: sha512-0TQed2gcBbIrh7Ccyw+y/uZQvbJwm7Ao4scBUxqpBCcsOlZG0O4KGfjtNAy/li4W8n1xt3dxrwJ0beZ2h2G6Kw==}
+
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
     engines: {node: '>= 8'}
@@ -246,6 +295,9 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@standard-schema/spec@1.0.0':
+    resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
 
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -478,6 +530,9 @@ packages:
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
     hasBin: true
 
+  esm-env@1.2.2:
+    resolution: {integrity: sha512-Epxrv+Nr/CaL4ZcFGPJIYLWFom+YeV1DqMLHJoEd9SYRxNbaFruBwfEX/kkHUJf55j2+TUbmDcmuilbP1TmXHA==}
+
   espree@9.6.1:
     resolution: {integrity: sha512-oruZaFkjorTpF32kDSI5/75ViwGeZginGGy2NoOSg3Q9bnwlnmDm4HLnkl0RE3n+njDXR037aY1+x58Z/zFdwQ==}
     engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
@@ -696,6 +751,7 @@ packages:
 
   libsql@0.4.6:
     resolution: {integrity: sha512-F5M+ltteK6dCcpjMahrkgT96uFJvVI8aQ4r9f2AzHQjC7BkAYtvfMSTWGvRBezRgMUIU2h1Sy0pF9nOGOD5iyA==}
+    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   light-my-request@5.13.0:
@@ -728,6 +784,11 @@ packages:
 
   multiformats@13.2.2:
     resolution: {integrity: sha512-RWI+nyf0q64vyOxL8LbKtjJMki0sogRL/8axvklNtiTM0iFCVtHwME9w6+0P1/v4dQvsIg8A45oT3ka1t/M/+A==}
+
+  nanoid@5.1.6:
+    resolution: {integrity: sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==}
+    engines: {node: ^18 || >=20}
+    hasBin: true
 
   natural-compare@1.4.0:
     resolution: {integrity: sha512-OWND8ei3VtNC9h7V60qff3SVobHr996CTwgxubgyQYEpg290h9J0buyECNNJexkFm5sOajh5G116RYA1c8ZMSw==}
@@ -1007,11 +1068,16 @@ snapshots:
 
   '@aashutoshrathi/word-wrap@1.2.6': {}
 
+  '@atcute/atproto@3.1.8':
+    dependencies:
+      '@atcute/lexicons': 1.2.2
+
   '@atcute/base32@1.0.0': {}
 
-  '@atcute/bluesky@1.0.7(@atcute/client@2.0.3)':
+  '@atcute/bluesky@3.2.8':
     dependencies:
-      '@atcute/client': 2.0.3
+      '@atcute/atproto': 3.1.8
+      '@atcute/lexicons': 1.2.2
 
   '@atcute/cbor@1.0.2':
     dependencies:
@@ -1024,14 +1090,64 @@ snapshots:
       '@atcute/base32': 1.0.0
       '@atcute/varint': 1.0.0
 
-  '@atcute/client@2.0.3': {}
-
-  '@atcute/ozone@1.0.4(@atcute/bluesky@1.0.7(@atcute/client@2.0.3))(@atcute/client@2.0.3)':
+  '@atcute/client@4.0.5':
     dependencies:
-      '@atcute/bluesky': 1.0.7(@atcute/client@2.0.3)
-      '@atcute/client': 2.0.3
+      '@atcute/identity': 1.1.1
+      '@atcute/lexicons': 1.2.2
+
+  '@atcute/crypto@2.2.5':
+    dependencies:
+      '@atcute/multibase': 1.1.6
+      '@atcute/uint8array': 1.0.5
+      '@noble/secp256k1': 2.3.0
+
+  '@atcute/identity-resolver@1.1.4(@atcute/identity@1.1.1)':
+    dependencies:
+      '@atcute/identity': 1.1.1
+      '@atcute/lexicons': 1.2.2
+      '@atcute/util-fetch': 1.0.3
+      '@badrap/valita': 0.4.6
+
+  '@atcute/identity@1.1.1':
+    dependencies:
+      '@atcute/lexicons': 1.2.2
+      '@badrap/valita': 0.4.6
+
+  '@atcute/lexicons@1.2.2':
+    dependencies:
+      '@standard-schema/spec': 1.0.0
+      esm-env: 1.2.2
+
+  '@atcute/multibase@1.1.6':
+    dependencies:
+      '@atcute/uint8array': 1.0.5
+
+  '@atcute/ozone@3.1.10':
+    dependencies:
+      '@atcute/atproto': 3.1.8
+      '@atcute/bluesky': 3.2.8
+      '@atcute/lexicons': 1.2.2
+
+  '@atcute/uint8array@1.0.5': {}
+
+  '@atcute/util-fetch@1.0.3':
+    dependencies:
+      '@badrap/valita': 0.4.6
 
   '@atcute/varint@1.0.0': {}
+
+  '@atcute/xrpc-server@0.1.2':
+    dependencies:
+      '@atcute/crypto': 2.2.5
+      '@atcute/identity': 1.1.1
+      '@atcute/identity-resolver': 1.1.4(@atcute/identity@1.1.1)
+      '@atcute/lexicons': 1.2.2
+      '@atcute/multibase': 1.1.6
+      '@atcute/uint8array': 1.0.5
+      '@badrap/valita': 0.4.6
+      nanoid: 5.1.6
+
+  '@badrap/valita@0.4.6': {}
 
   '@dprint/darwin-arm64@0.41.0':
     optional: true
@@ -1175,6 +1291,8 @@ snapshots:
 
   '@noble/hashes@1.5.0': {}
 
+  '@noble/secp256k1@2.3.0': {}
+
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
       '@nodelib/fs.stat': 2.0.5
@@ -1186,6 +1304,8 @@ snapshots:
     dependencies:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.17.1
+
+  '@standard-schema/spec@1.0.0': {}
 
   '@types/json-schema@7.0.15': {}
 
@@ -1470,6 +1590,8 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  esm-env@1.2.2: {}
+
   espree@9.6.1:
     dependencies:
       acorn: 8.11.3
@@ -1735,6 +1857,8 @@ snapshots:
   ms@2.1.2: {}
 
   multiformats@13.2.2: {}
+
+  nanoid@5.1.6: {}
 
   natural-compare@1.4.0: {}
 

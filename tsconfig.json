@@ -1,6 +1,7 @@
 {
 	"compilerOptions": {
 		"lib": ["esnext"],
+		"types": ["@atcute/atproto", "@atcute/bluesky"],
 		"target": "esnext",
 		"module": "nodenext",
 		"moduleResolution": "nodenext",
