@@ -4,7 +4,6 @@ import { Did, isDid } from "@atcute/lexicons/syntax";
 import type { ToolsOzoneModerationEmitEvent } from "@atcute/ozone";
 import { XRPCError } from "@atcute/xrpc-server";
 
-import { toBytes } from "@atcute/cbor";
 import { fastifyWebsocket } from "@fastify/websocket";
 import { Client, createClient } from "@libsql/client";
 import fastify, {
@@ -18,7 +17,6 @@ import { formatLabel, toSignedLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
 	LabelSubject,
-	LabelUri,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
@@ -243,7 +241,7 @@ export class LabelerServer {
 		const id = Number(result.rows[0].id);
 
 		this.emitLabel(id, signed);
-		return { id, ...signed, sig: toBytes(sig) };
+		return { id, ...formatLabel(signed) };
 	}
 
 	/**
@@ -428,7 +426,7 @@ export class LabelerServer {
 		const rows = result.rows.map((row) => ({
 			id: Number(row.id),
 			src: row.src as Did,
-			uri: row.uri as LabelUri,
+			uri: row.uri as string,
 			val: row.val as string,
 			neg: Boolean(row.neg),
 			cts: row.cts as string,
@@ -479,7 +477,7 @@ export class LabelerServer {
 					const { id: seq, src, uri, cid, val, neg, cts, exp, sig } = row;
 					const label = {
 						src: src as Did,
-						uri: uri as LabelUri,
+						uri: uri as string,
 						val: val as string,
 						neg: Boolean(neg),
 						cts: cts as string,
@@ -552,7 +550,7 @@ export class LabelerServer {
 			});
 		}
 
-		const uri: LabelUri | null = subject.$type === "com.atproto.admin.defs#repoRef"
+		const uri = subject.$type === "com.atproto.admin.defs#repoRef"
 			? subject.did
 			: subject.$type === "com.atproto.repo.strongRef"
 			? subject.uri

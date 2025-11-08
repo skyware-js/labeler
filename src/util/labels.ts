@@ -1,8 +1,9 @@
 import { type Bytes, encode as cborEncode, fromBytes, toBytes } from "@atcute/cbor";
 import { isBytes } from "@atcute/lexicons/interfaces";
 import { k256Sign } from "./crypto.js";
-import type { FormattedLabel, Label, SignedLabel, UnsignedLabel } from "./types.js";
+import type { FormattedLabel, SignedLabel, UnsignedLabel } from "./types.js";
 import { excludeNullish } from "./util.js";
+import { isCanonicalResourceUri, isDid } from "@atcute/lexicons/syntax";
 
 const LABEL_VERSION = 1;
 
@@ -30,7 +31,14 @@ export function formatLabel(label: UnsignedLabel & { sig?: Signature }): Formatt
 	if (!sig || !("$bytes" in sig)) {
 		throw new Error("Expected sig to be an object with base64 $bytes, got " + sig);
 	}
-	return excludeNullish({ ...label, ver: LABEL_VERSION, neg: !!label.neg, sig });
+	const { src, uri } = label;
+	if (!isDid(src)) {
+		throw new Error("Expected src to be a DID, got " + src);
+	}
+	if (!isDid(uri) && !isCanonicalResourceUri(uri)) {
+		throw new Error("Expected uri to be a DID or AT URI, got " + uri);
+	}
+	return excludeNullish({ ...label, ver: LABEL_VERSION, neg: !!label.neg, sig, src, uri });
 }
 
 export function signLabel(label: UnsignedLabel, signingKey: Uint8Array): SignedLabel {
@@ -43,7 +51,7 @@ export function signLabel(label: UnsignedLabel, signingKey: Uint8Array): SignedL
 export function toSignedLabel(label: UnsignedLabel, signingKey: Uint8Array): SignedLabel {
 	if ("sig" in label) {
 		let signature: Uint8Array;
-		if (label.sig && isBytes(label.sig)) {
+		if (isBytes(label.sig)) {
 			signature = fromBytes(label.sig);
 		} else if (label.sig instanceof ArrayBuffer) {
 			signature = new Uint8Array(label.sig);
@@ -58,6 +66,6 @@ export function toSignedLabel(label: UnsignedLabel, signingKey: Uint8Array): Sig
 	}
 }
 
-export function labelIsSigned<T extends Label>(label: T): label is T & SignedLabel {
+export function labelIsSigned<T extends UnsignedLabel>(label: T): label is T & SignedLabel {
 	return "sig" in label && label.sig !== undefined;
 }
