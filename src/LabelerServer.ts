@@ -73,10 +73,10 @@ export interface LabelerOptions {
 
 export class LabelerServer {
 	/** The Fastify application instance. */
-	app: FastifyInstance;
+	private app: FastifyInstance;
 
 	/** The SQLite database instance. */
-	db: Client;
+	private db: Client;
 
 	/** The DID of the labeler account. */
 	did: Did;
@@ -336,7 +336,7 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
-	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.$params> = async (req, res) => {
+	private queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.$params> = async (req, res) => {
 		await this.dbInitLock;
 
 		let uriPatterns: Array<string>;
@@ -443,7 +443,7 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).
 	 */
-	subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = async (ws, req) => {
+	private subscribeLabelsHandler: SubscriptionHandler<{ cursor?: string }> = async (ws, req) => {
 		await this.dbInitLock;
 
 		const cursor = parseInt(req.query.cursor ?? "NaN", 10);
@@ -511,7 +511,7 @@ export class LabelerServer {
 	/**
 	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
-	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.$output> = async (
+	private emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.$output> = async (
 		req,
 		res,
 	) => {
@@ -594,7 +594,7 @@ export class LabelerServer {
 	/**
 	 * Handler for the health check endpoint.
 	 */
-	healthHandler: QueryHandler = async (_req, res) => {
+	private healthHandler: QueryHandler = async (_req, res) => {
 		const VERSION = "0.2.0";
 		try {
 			await this.db.execute({ sql: "SELECT 1", args: [] });
@@ -607,13 +607,13 @@ export class LabelerServer {
 	/**
 	 * Catch-all handler for unknown XRPC methods.
 	 */
-	unknownMethodHandler: QueryHandler = async (_req, res) =>
+	private unknownMethodHandler: QueryHandler = async (_req, res) =>
 		res.status(501).send({ error: "MethodNotImplemented", message: "Method Not Implemented" });
 
 	/**
 	 * Default error handler.
 	 */
-	errorHandler: typeof this.app.errorHandler = async (err, _req, res) => {
+	private errorHandler: typeof this.app.errorHandler = async (err, _req, res) => {
 		if (err instanceof XRPCError) {
 			return res.status(err.status).send({ error: err.error, message: err.description });
 		} else {
