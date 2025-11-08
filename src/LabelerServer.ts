@@ -1,5 +1,4 @@
 import type { ComAtprotoLabelQueryLabels } from "@atcute/atproto";
-import type { InferXRPCBodyInput, InferXRPCBodyOutput } from "@atcute/lexicons";
 import { Did, isDid } from "@atcute/lexicons/syntax";
 import type { ToolsOzoneModerationEmitEvent } from "@atcute/ozone";
 import { XRPCError } from "@atcute/xrpc-server";
@@ -513,7 +512,7 @@ export class LabelerServer {
 	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
 	emitEventHandler: ProcedureHandler<
-		InferXRPCBodyInput<ToolsOzoneModerationEmitEvent.mainSchema["output"]>
+		ToolsOzoneModerationEmitEvent.$output
 	> = async (req, res) => {
 		const actorDid = await this.parseAuthHeaderDid(req);
 		const authed = await this.auth(actorDid);
@@ -587,7 +586,7 @@ export class LabelerServer {
 				subjectBlobCids,
 				createdBy,
 				createdAt: new Date().toISOString(),
-			} satisfies InferXRPCBodyOutput<ToolsOzoneModerationEmitEvent.mainSchema["output"]>,
+			} satisfies ToolsOzoneModerationEmitEvent.$output
 		);
 	};
 
