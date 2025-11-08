@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import type { ComAtprotoLabelDefs } from "@atcute/atproto";
+import { getPdsEndpoint, isAtprotoDid } from "@atcute/identity";
+import { AtprotoDid } from "@atcute/lexicons/syntax";
 import { XRPCError } from "@atcute/xrpc-server";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
@@ -17,21 +19,58 @@ import {
 	setLabelerLabelDefinitions,
 } from "./scripts/index.js";
 import { loginAgent } from "./scripts/util.js";
-import { resolveHandle } from "./util/resolveHandle.js";
+import { didResolver, handleResolver } from "./util/resolver.js";
 
 const argv = process.argv.slice(2);
 const [command, subcommand, ...args] = argv;
 
-if (command === "setup" || command === "clear") {
-	const credentials = await promptCredentials();
+const abortController = new AbortController();
+abortController.signal.addEventListener("abort", () => {
+	process.exit(1);
+});
 
+const onCancel = () => {
+	abortController.abort();
+};
+
+if (!["setup", "clear", "recreate", "label"].includes(command)) {
+	console.log("Usage: npx @skyware/labeler [command]");
+	console.log("Commands:");
+	console.log("  setup - Initialize an account as a labeler.");
+	console.log("  clear - Restore a labeler account to normal.");
+	console.log(
+		"  recreate - Recreate the labeler declaration (recommended if labels are not showing up).",
+	);
+	console.log("  label add - Add new label declarations to a labeler account.");
+	console.log("  label delete - Remove label declarations from a labeler account.");
+	console.log("  label edit - Bulk edit label definitions.");
+
+	process.exit(0);
+}
+
+const credentials = await promptCredentials().catch((err) => {
+	console.error(err);
+	process.exit(1);
+});
+
+// Since these commands rely on PLC operations, we can't proceed with a did:web identifier:
+if (
+	["setup", "clear", "recreate"].includes(command) && credentials.identifier.startsWith("did:web")
+) {
+	console.error(
+		`npx @skyware/labeler currently only supports did:plc identities for ${command}, received: ${credentials.identifier}`,
+	);
+	process.exit(1);
+}
+
+if (command === "setup" || command === "clear") {
 	await plcRequestToken(credentials);
 
 	const { plcToken } = await prompt({
 		type: "text",
 		name: "plcToken",
 		message: "You will receive a confirmation code via email. Code:",
-	}, { onCancel: () => process.exit(1) });
+	}, { onCancel });
 
 	if (command === "setup") {
 		try {
@@ -51,7 +90,7 @@ if (command === "setup" || command === "clear") {
 					if (/^[A-Za-z0-9+/=]+$/.test(value)) return true;
 					return "Must be a hex or base64-encoded string.";
 				},
-			}], { onCancel: () => process.exit(1) });
+			}], { onCancel });
 
 			const operation = await plcSetupLabeler({
 				...credentials,
@@ -95,8 +134,6 @@ if (command === "setup" || command === "clear") {
 		}
 	}
 } else if (command === "recreate") {
-	const credentials = await promptCredentials();
-
 	const definitions = await getLabelerLabelDefinitions(credentials);
 	if (!definitions) {
 		console.log("No label definitions found.");
@@ -114,7 +151,6 @@ if (command === "setup" || command === "clear") {
 	command === "label"
 	&& (subcommand === "add" || subcommand === "delete" || subcommand === "edit")
 ) {
-	const credentials = await promptCredentials();
 	const labelDefinitions = await getLabelerLabelDefinitions(credentials) ?? [];
 
 	if (subcommand === "add") {
@@ -191,21 +227,10 @@ if (command === "setup" || command === "clear") {
 			console.error("Error updating label definitions:", error);
 		}
 	}
-} else {
-	console.log("Usage: npx @skyware/labeler [command]");
-	console.log("Commands:");
-	console.log("  setup - Initialize an account as a labeler.");
-	console.log("  clear - Restore a labeler account to normal.");
-	console.log(
-		"  recreate - Recreate the labeler declaration (recommended if labels are not showing up).",
-	);
-	console.log("  label add - Add new label declarations to a labeler account.");
-	console.log("  label delete - Remove label declarations from a labeler account.");
-	console.log("  label edit - Bulk edit label definitions.");
 }
 
 async function promptCredentials(): Promise<LoginCredentials> {
-	let did: string | undefined;
+	let did: AtprotoDid | undefined;
 	while (!did) {
 		const { did: didOrHandle } = await prompt({
 			type: "text",
@@ -214,25 +239,31 @@ async function promptCredentials(): Promise<LoginCredentials> {
 			validate: (value) =>
 				value.startsWith("did:") || value.includes(".") || "Invalid DID or handle.",
 			format: (value) => value.startsWith("@") ? value.slice(1) : value,
-		}, { onCancel: () => process.exit(1) });
+		}, { onCancel });
 		if (!didOrHandle) continue;
-		did = didOrHandle.startsWith("did:") ? didOrHandle : await resolveHandle(didOrHandle);
+
+		did = isAtprotoDid(didOrHandle) ? didOrHandle : await handleResolver.resolve(didOrHandle);
+
 		if (!did) {
-			console.log(`Could not resolve "${didOrHandle}" to a valid account. Please try again.`);
+			throw new Error(
+				`Could not resolve "${didOrHandle}" to a valid account. Please try again.`,
+			);
 		}
 	}
 
-	const { password, pds } = await prompt([{
+	const didDoc = await didResolver.resolve(did);
+	const pds = getPdsEndpoint(didDoc);
+
+	// This shouldn't really ever happen in practice,
+	if (!pds) {
+		throw new Error(`Could not resolve "${did}" to a valid pds.`);
+	}
+
+	const { password } = await prompt([{
 		type: "password",
 		name: "password",
 		message: "Account password (cannot be an app password):",
-	}, {
-		type: "text",
-		name: "pds",
-		message: "URL of the PDS where the account is located:",
-		initial: "https://bsky.social",
-		validate: (value) => value.startsWith("https://") || "Must be a valid HTTPS URL.",
-	}], { onCancel: () => process.exit(1) });
+	}], { onCancel });
 
 	const credentials: LoginCredentials = { identifier: did, password, pds };
 
@@ -245,7 +276,7 @@ async function promptCredentials(): Promise<LoginCredentials> {
 				name: "code",
 				message: "You will receive a 2FA code via email. Code:",
 				initial: "",
-			}, { onCancel: () => process.exit(1) });
+			}, { onCancel });
 			credentials.code = code;
 		} else {
 			console.error("Error occurred while trying to log in:", error);
