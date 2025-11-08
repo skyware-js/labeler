@@ -1,5 +1,12 @@
-import { XRPCError } from "@atcute/client";
-import type { DidDocument } from "@atcute/client/utils/did";
+import { getAtprotoVerificationMaterial, isPlcDid, isWebDid } from "@atcute/identity";
+import {
+	CompositeDidDocumentResolver,
+	PlcDidDocumentResolver,
+	WebDidDocumentResolver,
+} from "@atcute/identity-resolver";
+import { Did } from "@atcute/lexicons";
+import { isDid } from "@atcute/lexicons/syntax";
+import { XRPCError } from "@atcute/xrpc-server";
 import { p256 } from "@noble/curves/p256";
 import { secp256k1 as k256 } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha256";
@@ -18,13 +25,17 @@ export const SECP256K1_JWT_ALG = "ES256K";
 
 const didToSigningKeyCache = new Map<string, { key: string; expires: number }>();
 
+const docResolver = new CompositeDidDocumentResolver({
+	methods: { plc: new PlcDidDocumentResolver(), web: new WebDidDocumentResolver() },
+});
+
 /**
  * Resolves the atproto signing key for a DID.
  * @param did The DID to resolve.
  * @param forceRefresh Whether to skip the cache and always resolve the DID.
  * @returns The resolved signing key.
  */
-export async function resolveDidToSigningKey(did: string, forceRefresh?: boolean): Promise<string> {
+export async function resolveDidToSigningKey(did: Did, forceRefresh?: boolean): Promise<string> {
 	if (!forceRefresh) {
 		const cached = didToSigningKeyCache.get(did);
 		if (cached) {
@@ -36,27 +47,26 @@ export async function resolveDidToSigningKey(did: string, forceRefresh?: boolean
 		}
 	}
 
-	const [, didMethod, ...didValueParts] = did.split(":");
+	if (!isPlcDid(did) && !isWebDid(did)) {
+		throw new Error(`Could not resolve DID: ${did}, expected did:plc or did:web`);
+	}
 
+	const didDocument = await docResolver.resolve(did);
+	const verificationMethod = getAtprotoVerificationMaterial(didDocument);
+
+	if (!verificationMethod) {
+		throw new Error(`Could not find verification method for DID: ${did}`);
+	}
+
+	const keyBytes = multibaseToBytes(verificationMethod.publicKeyMultibase);
 	let didKey: string | undefined = undefined;
-	if (didMethod === "plc") {
-		const res = await fetch(`https:/plc.directory/${encodeURIComponent(did)}`, {
-			headers: { accept: "application/json" },
-		});
-		if (!res.ok) throw new Error(`Could not resolve DID: ${did}`);
-
-		didKey = parseKeyFromDidDocument(await res.json() as never, did);
-	} else if (didMethod === "web") {
-		if (!didValueParts.length) throw new Error(`Poorly formatted DID: ${did}`);
-		if (didValueParts.length > 1) throw new Error(`Unsupported did:web paths: ${did}`);
-		const didValue = didValueParts[0];
-
-		const res = await fetch(`https://${didValue}/.well-known/did.json`, {
-			headers: { accept: "application/json" },
-		});
-		if (!res.ok) throw new Error(`Could not resolve DID: ${did}`);
-
-		didKey = parseKeyFromDidDocument(await res.json() as never, did);
+	if (verificationMethod.type === "EcdsaSecp256r1VerificationKey2019") {
+		didKey = formatDidKey(P256_JWT_ALG, keyBytes);
+	} else if (verificationMethod.type === "EcdsaSecp256k1VerificationKey2019") {
+		didKey = formatDidKey(SECP256K1_JWT_ALG, keyBytes);
+	} else if (verificationMethod.type === "Multikey") {
+		const parsed = parseDidMultikey("did:key:" + verificationMethod.publicKeyMultibase);
+		didKey = formatDidKey(parsed.jwtAlg, parsed.keyBytes);
 	}
 
 	if (!didKey) throw new Error(`Could not resolve DID: ${did}`);
@@ -78,23 +88,25 @@ export async function verifyJwt(
 ): Promise<{ iss: string; aud: string; exp: number; lxm?: string; jti?: string }> {
 	const parts = jwtStr.split(".");
 	if (parts.length !== 3) {
-		throw new XRPCError(401, { kind: "BadJwt", description: "Poorly formatted JWT" });
+		throw new XRPCError({ status: 401, error: "BadJwt", description: "Poorly formatted JWT" });
 	}
 	const payload = parsePayload(parts[1]);
 	const sig = parts[2];
 
 	if (Date.now() / 1000 > payload.exp) {
-		throw new XRPCError(401, { kind: "JwtExpired", description: "JWT expired" });
+		throw new XRPCError({ status: 401, error: "JwtExpired", description: "JWT expired" });
 	}
 	if (ownDid !== null && payload.aud !== ownDid) {
-		throw new XRPCError(401, {
-			kind: "BadJwtAudience",
+		throw new XRPCError({
+			status: 401,
+			error: "BadJwtAudience",
 			description: "JWT audience does not match service DID",
 		});
 	}
 	if (lxm !== null && payload.lxm !== lxm) {
-		throw new XRPCError(401, {
-			kind: "BadJwtLexiconMethod",
+		throw new XRPCError({
+			status: 401,
+			error: "BadJwtLexiconMethod",
 			description: payload.lxm !== undefined
 				? `Bad JWT lexicon method ("lxm"). Must match: ${lxm}`
 				: `Missing JWT lexicon method ("lxm"). Must match: ${lxm}`,
@@ -104,17 +116,30 @@ export async function verifyJwt(
 	const msgBytes = ui8.fromString(parts.slice(0, 2).join("."), "utf8");
 	const sigBytes = ui8.fromString(sig, "base64url");
 
+	if (!isDid(payload.iss)) {
+		throw new XRPCError({
+			status: 401,
+			error: "BadJwtIss",
+			description: "JWT issuer was an invalid did",
+		});
+	}
+
 	const signingKey = await resolveDidToSigningKey(payload.iss, false).catch((e) => {
 		console.error(e);
-		throw new XRPCError(500, { kind: "InternalError", description: "Could not resolve DID" });
+		throw new XRPCError({
+			status: 500,
+			error: "InternalError",
+			description: "Could not resolve DID",
+		});
 	});
 
 	let validSig: boolean;
 	try {
 		validSig = verifySignatureWithKey(signingKey, msgBytes, sigBytes);
 	} catch (err) {
-		throw new XRPCError(401, {
-			kind: "BadJwtSignature",
+		throw new XRPCError({
+			status: 401,
+			error: "BadJwtSignature",
 			description: "Could not verify JWT signature",
 		});
 	}
@@ -127,16 +152,18 @@ export async function verifyJwt(
 				? verifySignatureWithKey(freshSigningKey, msgBytes, sigBytes)
 				: false;
 		} catch (err) {
-			throw new XRPCError(401, {
-				kind: "BadJwtSignature",
+			throw new XRPCError({
+				status: 401,
+				error: "BadJwtSignature",
 				description: "Could not verify JWT signature",
 			});
 		}
 	}
 
 	if (!validSig) {
-		throw new XRPCError(401, {
-			kind: "BadJwtSignature",
+		throw new XRPCError({
+			status: 401,
+			error: "BadJwtSignature",
 			description: "JWT signature does not match JWT issuer",
 		});
 	}
@@ -162,40 +189,6 @@ function verifySignatureWithKey(didKey: string, msgBytes: Uint8Array, sigBytes: 
 	const curve = jwtAlg === P256_JWT_ALG ? "p256" : "k256";
 	return verifyDidSig(curve, didKey, msgBytes, sigBytes);
 }
-
-/**
- * Parses a DID document and extracts the atproto signing key.
- * @param doc The DID document to parse.
- * @param did The DID the document is for.
- * @returns The atproto signing key.
- */
-const parseKeyFromDidDocument = (doc: DidDocument, did: string): string => {
-	if (!Array.isArray(doc?.verificationMethod)) {
-		throw new Error(`Could not parse signingKey from doc: ${JSON.stringify(doc)}`);
-	}
-	const key = doc.verificationMethod.find((method) =>
-		method?.id === `${did}#atproto` || method?.id === `#atproto`
-	);
-	if (
-		!key || typeof key !== "object" || !("type" in key) || typeof key.type !== "string"
-		|| !("publicKeyMultibase" in key) || typeof key.publicKeyMultibase !== "string"
-	) {
-		throw new Error(`Could not resolve DID: ${did}`);
-	}
-
-	const keyBytes = multibaseToBytes(key.publicKeyMultibase);
-	let didKey: string | undefined = undefined;
-	if (key.type === "EcdsaSecp256r1VerificationKey2019") {
-		didKey = formatDidKey(P256_JWT_ALG, keyBytes);
-	} else if (key.type === "EcdsaSecp256k1VerificationKey2019") {
-		didKey = formatDidKey(SECP256K1_JWT_ALG, keyBytes);
-	} else if (key.type === "Multikey") {
-		const parsed = parseDidMultikey("did:key:" + key.publicKeyMultibase);
-		didKey = formatDidKey(parsed.jwtAlg, parsed.keyBytes);
-	}
-	if (!didKey) throw new Error(`Could not parse signingKey from doc: ${JSON.stringify(doc)}`);
-	return didKey;
-};
 
 /**
  * Parses a hex- or base64-encoded private key to a Uint8Array.
@@ -368,7 +361,7 @@ const parsePayload = (
 		|| (payload.lxm && typeof payload.lxm !== "string")
 		|| (payload.nonce && typeof payload.nonce !== "string")
 	) {
-		throw new XRPCError(401, { kind: "BadJwt", description: "Poorly formatted JWT" });
+		throw new XRPCError({ status: 401, error: "BadJwt", description: "Poorly formatted JWT" });
 	}
 	return payload;
 };

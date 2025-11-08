@@ -1,4 +1,4 @@
-import { At, ComAtprotoLabelDefs } from "@atcute/client/lexicons";
+import type { Bytes, CanonicalResourceUri, Cid, Datetime, Did } from "@atcute/lexicons";
 import type { WebsocketHandler } from "@fastify/websocket";
 import type {
 	RawReplyDefaultExpression,
@@ -16,30 +16,42 @@ type NonNullishKeys<T> = Exclude<keyof T, NullishKeys<T>>;
 export type NonNullishPartial<T> =
 	& { [K in NullishKeys<T>]+?: Exclude<T[K], null | undefined> }
 	& { [K in NonNullishKeys<T>]-?: T[K] };
+export type MakeOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;
 
-/**
- * Data required to create a label.
- */
-export interface CreateLabelData {
-	/** The label value. */
-	val: string;
-	/** The subject of the label. If labeling an account, this should be a string beginning with `did:`. */
-	uri: string;
-	/** Optionally, a CID specifying the version of `uri` to label. */
+export type LabelSubject = { uri: string; cid?: never } | { uri: string; cid?: Cid };
+
+/** Base unsigned label. */
+export type UnsignedLabel = {
+	$type?: "com.atproto.label.defs#label" | undefined;
+	/** Optionally, a CID specifying the version of {@link uri} to label. */
 	cid?: string | undefined;
+	/** The creation date of the label. Must be in ISO 8601 format. */
+	cts: Datetime;
+	/** The expiration date of the label, if any. Must be in ISO 8601 format. */
+	exp?: Datetime | undefined;
 	/** Whether this label is negating a previous instance of this label applied to the same subject. */
 	neg?: boolean | undefined;
-	/** The DID of the actor who created this label, if different from the labeler. */
-	src?: string | undefined;
-	/** The creation date of the label. Must be in ISO 8601 format. */
-	cts?: string | undefined;
-	/** The expiration date of the label, if any. Must be in ISO 8601 format. */
-	exp?: string | undefined;
-}
-export type UnsignedLabel = Omit<ComAtprotoLabelDefs.Label, "sig">;
+	/** The DID of the actor who created this label. */
+	src: string;
+	/** The subject of the label. If labeling an account, this should be a DID. Otherwise, an AT URI. */
+	uri: string;
+	/** The label value. */
+	val: string;
+	/** The label version. Always 1. */
+	ver?: number | undefined;
+};
+/** Data to create a label. */
+export type CreateLabelData = MakeOptional<Omit<UnsignedLabel, "$type" | "ver">, "cts" | "src">;
+/** Label to be inserted into database. */
 export type SignedLabel = UnsignedLabel & { sig: Uint8Array };
-export type FormattedLabel = UnsignedLabel & { sig?: At.Bytes };
-export type SavedLabel = UnsignedLabel & { sig: ArrayBuffer; id: number };
+/** Label to be emitted via websocket or XRPC response. */
+export type FormattedLabel = UnsignedLabel & {
+	src: Did;
+	uri: Did | CanonicalResourceUri;
+	sig: Bytes;
+};
+/** Label with id, returned from creation methods. */
+export type SavedLabel = FormattedLabel & { id: number };
 
 export type QueryHandler<
 	T extends RouteGenericInterface["Querystring"] = RouteGenericInterface["Querystring"],

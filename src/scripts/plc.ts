@@ -1,4 +1,4 @@
-import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/client/lexicons";
+import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/atproto";
 import { secp256k1 as k256 } from "@noble/curves/secp256k1";
 import { toString as ui8ToString } from "uint8arrays/to-string";
 import { formatDidKey, parsePrivateKey, SECP256K1_JWT_ALG } from "../util/crypto.js";
@@ -58,9 +58,11 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	const publicKey = k256.getPublicKey(privateKey);
 	const keyDid = formatDidKey(SECP256K1_JWT_ALG, publicKey);
 
-	const operation: ComAtprotoIdentitySignPlcOperation.Input = {};
+	const operation: ComAtprotoIdentitySignPlcOperation.$input = {};
 
 	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
+
+	if (!credentials.ok) throw new Error("Failed to get recommended DID credentials");
 
 	if (
 		!credentials.data.verificationMethods
@@ -95,12 +97,17 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 		return;
 	}
 
-	const plcOp = await agent.call("com.atproto.identity.signPlcOperation", {
-		data: { token: options.plcToken, ...operation },
+	const plcOp = await agent.post("com.atproto.identity.signPlcOperation", {
+		input: { token: options.plcToken, ...operation },
 	});
 
-	await agent.call("com.atproto.identity.submitPlcOperation", {
-		data: { operation: plcOp.data.operation },
+	if (!plcOp.ok) {
+		throw new Error("Failed to sign plc operation");
+	}
+
+	await agent.post("com.atproto.identity.submitPlcOperation", {
+		as: "json",
+		input: { operation: plcOp.data.operation },
 	});
 
 	if (!options.privateKey && operation.verificationMethods) {
@@ -130,6 +137,10 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
 
 	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
 
+	if (!credentials.ok) {
+		throw new Error("Failed to retrieve labeler identity");
+	}
+
 	if (
 		credentials.data.verificationMethods
 		&& typeof credentials.data.verificationMethods === "object"
@@ -146,12 +157,17 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
 		delete credentials.data.services.atproto_labeler;
 	}
 
-	const plcOp = await agent.call("com.atproto.identity.signPlcOperation", {
-		data: { token: options.plcToken, ...credentials.data },
+	const plcOp = await agent.post("com.atproto.identity.signPlcOperation", {
+		input: { token: options.plcToken, ...credentials.data },
 	});
 
-	await agent.call("com.atproto.identity.submitPlcOperation", {
-		data: { operation: plcOp.data.operation },
+	if (!plcOp.ok) {
+		throw new Error("Failed to sign PLC operation");
+	}
+
+	await agent.post("com.atproto.identity.submitPlcOperation", {
+		as: "json",
+		input: { operation: plcOp.data.operation },
 	});
 }
 
@@ -162,5 +178,5 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
  */
 export async function plcRequestToken(credentials: LoginCredentials): Promise<void> {
 	const { agent } = await loginAgent(credentials);
-	await agent.call("com.atproto.identity.requestPlcOperationSignature", {});
+	await agent.post("com.atproto.identity.requestPlcOperationSignature", { as: "json" });
 }

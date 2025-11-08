@@ -1,10 +1,8 @@
-import "@atcute/ozone/lexicons";
-import { XRPCError } from "@atcute/client";
-import type {
-	At,
-	ComAtprotoLabelQueryLabels,
-	ToolsOzoneModerationEmitEvent,
-} from "@atcute/client/lexicons";
+import type { ComAtprotoLabelQueryLabels } from "@atcute/atproto";
+import { Did, isDid } from "@atcute/lexicons/syntax";
+import type { ToolsOzoneModerationEmitEvent } from "@atcute/ozone";
+import { XRPCError } from "@atcute/xrpc-server";
+
 import { fastifyWebsocket } from "@fastify/websocket";
 import { Client, createClient } from "@libsql/client";
 import fastify, {
@@ -14,9 +12,10 @@ import fastify, {
 } from "fastify";
 import type { WebSocket } from "ws";
 import { parsePrivateKey, verifyJwt } from "./util/crypto.js";
-import { formatLabel, labelIsSigned, signLabel } from "./util/labels.js";
+import { formatLabel, toSignedLabel } from "./util/labels.js";
 import type {
 	CreateLabelData,
+	LabelSubject,
 	ProcedureHandler,
 	QueryHandler,
 	SavedLabel,
@@ -26,6 +25,8 @@ import type {
 } from "./util/types.js";
 import { excludeNullish, frameToBytes } from "./util/util.js";
 
+const INVALID_DID_ERROR =
+	`Make sure to provide a valid DID using either did:plc or did:web methods.`;
 const INVALID_SIGNING_KEY_ERROR = `Make sure to provide a private signing key, not a public key.
 
 If you don't have a key, generate and set one using the \`npx @skyware/labeler setup\` command or the \`import { plcSetupLabeler } from "@skyware/labeler/scripts"\` function.
@@ -78,7 +79,7 @@ export class LabelerServer {
 	db: Client;
 
 	/** The DID of the labeler account. */
-	did: At.DID;
+	did: Did;
 
 	/** A function that returns whether a DID is authorized to create labels. */
 	private auth: (did: string) => boolean | Promise<boolean>;
@@ -100,8 +101,12 @@ export class LabelerServer {
 	 * @param options Configuration options.
 	 */
 	constructor(options: LabelerOptions) {
-		this.did = options.did as At.DID;
+		this.did = options.did as Did;
 		this.auth = options.auth ?? ((did) => did === this.did);
+
+		if (!isDid(this.did)) {
+			throw new Error(INVALID_DID_ERROR);
+		}
 
 		try {
 			if (options.signingKey.startsWith("did:key:")) throw 0;
@@ -218,7 +223,7 @@ export class LabelerServer {
 	private async saveLabel(label: UnsignedLabel): Promise<SavedLabel> {
 		await this.dbInitLock;
 
-		const signed = labelIsSigned(label) ? label : signLabel(label, this.#signingKey);
+		const signed = toSignedLabel(label, this.#signingKey);
 		const { src, uri, cid, val, neg, cts, exp, sig } = signed;
 
 		const sql = `
@@ -235,7 +240,7 @@ export class LabelerServer {
 		const id = Number(result.rows[0].id);
 
 		this.emitLabel(id, signed);
-		return { id, ...signed };
+		return { id, ...formatLabel(signed) };
 	}
 
 	/**
@@ -247,7 +252,7 @@ export class LabelerServer {
 		return await this.saveLabel(
 			excludeNullish({
 				...label,
-				src: (label.src ?? this.did) as At.DID,
+				src: (label.src ?? this.did),
 				cts: label.cts ?? new Date().toISOString(),
 			}),
 		);
@@ -260,24 +265,23 @@ export class LabelerServer {
 	 * @returns The created labels.
 	 */
 	async createLabels(
-		subject: { uri: string; cid?: string | undefined },
+		subject: LabelSubject,
 		labels: { create?: Array<string>; negate?: Array<string> },
 	): Promise<Array<SavedLabel>> {
 		await this.dbInitLock;
 
-		const { uri, cid } = subject;
 		const { create, negate } = labels;
 
 		const createdLabels: Array<SavedLabel> = [];
 		if (create) {
 			for (const val of create) {
-				const created = await this.createLabel({ uri, cid, val });
+				const created = await this.createLabel({ ...subject, val });
 				createdLabels.push(created);
 			}
 		}
 		if (negate) {
 			for (const val of negate) {
-				const negated = await this.createLabel({ uri, cid, val, neg: true });
+				const negated = await this.createLabel({ ...subject, val, neg: true });
 				createdLabels.push(negated);
 			}
 		}
@@ -303,16 +307,18 @@ export class LabelerServer {
 	private async parseAuthHeaderDid(req: FastifyRequest): Promise<string> {
 		const authHeader = req.headers.authorization;
 		if (!authHeader) {
-			throw new XRPCError(401, {
-				kind: "AuthRequired",
+			throw new XRPCError({
+				status: 401,
+				error: "AuthRequired",
 				description: "Authorization header is required",
 			});
 		}
 
 		const [type, token] = authHeader.split(" ");
 		if (type !== "Bearer" || !token) {
-			throw new XRPCError(400, {
-				kind: "MissingJwt",
+			throw new XRPCError({
+				status: 400,
+				error: "MissingJwt",
 				description: "Missing or invalid bearer token",
 			});
 		}
@@ -330,7 +336,7 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
-	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.Params> = async (req, res) => {
+	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.$params> = async (req, res) => {
 		await this.dbInitLock;
 
 		let uriPatterns: Array<string>;
@@ -353,16 +359,18 @@ export class LabelerServer {
 
 		const cursor = parseInt(`${req.query.cursor || 0}`, 10);
 		if (cursor !== undefined && Number.isNaN(cursor)) {
-			throw new XRPCError(400, {
-				kind: "InvalidRequest",
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
 				description: "Cursor must be an integer",
 			});
 		}
 
 		const limit = parseInt(`${req.query.limit || 50}`, 10);
 		if (Number.isNaN(limit) || limit < 1 || limit > 250) {
-			throw new XRPCError(400, {
-				kind: "InvalidRequest",
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
 				description: "Limit must be an integer between 1 and 250",
 			});
 		}
@@ -374,8 +382,9 @@ export class LabelerServer {
 			if (starIndex === -1) return pattern;
 
 			if (starIndex !== pattern.length - 1) {
-				throw new XRPCError(400, {
-					kind: "InvalidRequest",
+				throw new XRPCError({
+					status: 400,
+					error: "InvalidRequest",
 					description: "Only trailing wildcards are supported in uriPatterns",
 				});
 			}
@@ -415,20 +424,20 @@ export class LabelerServer {
 
 		const rows = result.rows.map((row) => ({
 			id: Number(row.id),
-			src: row.src as At.DID,
+			src: row.src as Did,
 			uri: row.uri as string,
 			val: row.val as string,
 			neg: Boolean(row.neg),
 			cts: row.cts as string,
 			...(row.cid ? { cid: row.cid as string } : {}),
 			...(row.exp ? { exp: row.exp as string } : {}),
-			...(row.sig ? { sig: row.sig as Uint8Array } : {}),
+			...(row.sig ? { sig: new Uint8Array(row.sig as ArrayBuffer) } : {}),
 		}));
 		const labels = rows.map(formatLabel);
 
 		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
 
-		await res.send({ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.Output);
+		await res.send({ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.$output);
 	};
 
 	/**
@@ -466,14 +475,14 @@ export class LabelerServer {
 				for (const row of result.rows) {
 					const { id: seq, src, uri, cid, val, neg, cts, exp, sig } = row;
 					const label = {
-						src: src as At.DID,
+						src: src as Did,
 						uri: uri as string,
 						val: val as string,
 						neg: Boolean(neg),
 						cts: cts as string,
 						...(cid ? { cid: cid as string } : {}),
 						...(exp ? { exp: exp as string } : {}),
-						...(sig ? { sig: sig as Uint8Array } : {}),
+						...(sig ? { sig: new Uint8Array(sig as ArrayBuffer) } : {}),
 					};
 					const bytes = frameToBytes("message", {
 						seq: Number(seq),
@@ -502,31 +511,41 @@ export class LabelerServer {
 	/**
 	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
-	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.Input> = async (req, res) => {
+	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.$output> = async (
+		req,
+		res,
+	) => {
 		const actorDid = await this.parseAuthHeaderDid(req);
 		const authed = await this.auth(actorDid);
 		if (!authed) {
-			throw new XRPCError(401, { kind: "AuthRequired", description: "Unauthorized" });
+			throw new XRPCError({
+				status: 401,
+				error: "AuthRequired",
+				description: "Unauthorized",
+			});
 		}
 
 		const { event, subject, subjectBlobCids = [], createdBy } = req.body;
 		if (!event || !subject || !createdBy) {
-			throw new XRPCError(400, {
-				kind: "InvalidRequest",
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
 				description: "Missing required field(s)",
 			});
 		}
 
 		if (event.$type !== "tools.ozone.moderation.defs#modEventLabel") {
-			throw new XRPCError(400, {
-				kind: "InvalidRequest",
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
 				description: "Unsupported event type",
 			});
 		}
 
 		if (!event.createLabelVals?.length && !event.negateLabelVals?.length) {
-			throw new XRPCError(400, {
-				kind: "InvalidRequest",
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
 				description: "Must provide at least one label value",
 			});
 		}
@@ -539,10 +558,19 @@ export class LabelerServer {
 		const cid = subject.$type === "com.atproto.repo.strongRef" ? subject.cid : undefined;
 
 		if (!uri) {
-			throw new XRPCError(400, { kind: "InvalidRequest", description: "Invalid subject" });
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
+				description: "Invalid subject",
+			});
 		}
 
-		const labels = await this.createLabels({ uri, cid }, {
+		const labelSubject: LabelSubject = { uri };
+		if (cid) {
+			labelSubject.cid = cid;
+		}
+
+		const labels = await this.createLabels(labelSubject, {
 			create: event.createLabelVals,
 			negate: event.negateLabelVals,
 		});
@@ -559,7 +587,7 @@ export class LabelerServer {
 				subjectBlobCids,
 				createdBy,
 				createdAt: new Date().toISOString(),
-			} satisfies ToolsOzoneModerationEmitEvent.Output,
+			} satisfies ToolsOzoneModerationEmitEvent.$output,
 		);
 	};
 
@@ -587,7 +615,7 @@ export class LabelerServer {
 	 */
 	errorHandler: typeof this.app.errorHandler = async (err, _req, res) => {
 		if (err instanceof XRPCError) {
-			return res.status(err.status).send({ error: err.kind, message: err.description });
+			return res.status(err.status).send({ error: err.error, message: err.description });
 		} else {
 			console.error(err);
 			return res.status(500).send({
