@@ -62,35 +62,35 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 
 	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
 
-	if (credentials.ok) {
-		if (
-			!credentials.data.verificationMethods
-			|| !(typeof credentials.data.verificationMethods === "object")
-			|| !("atproto_label" in credentials.data.verificationMethods)
-			|| !credentials.data.verificationMethods["atproto_label"]
-			|| (credentials.data.verificationMethods["atproto_label"] !== keyDid
-				&& options.overwriteExistingKey)
-		) {
-			operation.verificationMethods = {
-				...(credentials.data.verificationMethods || {}),
-				atproto_label: keyDid,
-			};
-		}
+	if (!credentials.ok) throw new Error("Failed to get recommended DID credentials");
 
-		if (
-			!credentials.data.services
-			|| !(typeof credentials.data.services === "object")
-			|| !("atproto_labeler" in credentials.data.services)
-			|| !credentials.data.services["atproto_labeler"]
-			|| typeof credentials.data.services["atproto_labeler"] !== "object"
-			|| !("endpoint" in credentials.data.services["atproto_labeler"])
-			|| credentials.data.services["atproto_labeler"].endpoint !== options.endpoint
-		) {
-			operation.services = {
-				...(credentials.data.services || {}),
-				atproto_labeler: { type: "AtprotoLabeler", endpoint: options.endpoint },
-			};
-		}
+	if (
+		!credentials.data.verificationMethods
+		|| !(typeof credentials.data.verificationMethods === "object")
+		|| !("atproto_label" in credentials.data.verificationMethods)
+		|| !credentials.data.verificationMethods["atproto_label"]
+		|| (credentials.data.verificationMethods["atproto_label"] !== keyDid
+			&& options.overwriteExistingKey)
+	) {
+		operation.verificationMethods = {
+			...(credentials.data.verificationMethods || {}),
+			atproto_label: keyDid,
+		};
+	}
+
+	if (
+		!credentials.data.services
+		|| !(typeof credentials.data.services === "object")
+		|| !("atproto_labeler" in credentials.data.services)
+		|| !credentials.data.services["atproto_labeler"]
+		|| typeof credentials.data.services["atproto_labeler"] !== "object"
+		|| !("endpoint" in credentials.data.services["atproto_labeler"])
+		|| credentials.data.services["atproto_labeler"].endpoint !== options.endpoint
+	) {
+		operation.services = {
+			...(credentials.data.services || {}),
+			atproto_labeler: { type: "AtprotoLabeler", endpoint: options.endpoint },
+		};
 	}
 
 	if (Object.keys(operation).length === 0) {

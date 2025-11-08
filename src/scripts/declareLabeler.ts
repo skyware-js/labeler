@@ -20,12 +20,6 @@ export async function declareLabeler(
 
 	const existingService = (await getLabelerService(credentials)).service;
 	if (existingService) {
-		if (!Array.isArray(existingService.reasonTypes) && overwriteExisting !== true) {
-			console.warn(
-				"Label service definition is missing reasonTypes, you should recreate the labeller to declare that it does not receive reports.",
-			);
-		}
-
 		const existingLabelDefinitions = getDefinitions(existingService);
 
 		if (existingLabelDefinitions && existingLabelDefinitions.length && !overwriteExisting) {
