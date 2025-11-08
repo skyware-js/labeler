@@ -1,5 +1,5 @@
 import type { ComAtprotoLabelQueryLabels } from "@atcute/atproto";
-import type { InferInput, InferXRPCBodyInput, InferXRPCBodyOutput } from "@atcute/lexicons";
+import type { InferXRPCBodyInput, InferXRPCBodyOutput } from "@atcute/lexicons";
 import { Did, isDid } from "@atcute/lexicons/syntax";
 import type { ToolsOzoneModerationEmitEvent } from "@atcute/ozone";
 import { XRPCError } from "@atcute/xrpc-server";
@@ -255,7 +255,7 @@ export class LabelerServer {
 		return await this.saveLabel(
 			excludeNullish({
 				...label,
-				src: (label.src ?? this.did) as Did,
+				src: (label.src ?? this.did),
 				cts: label.cts ?? new Date().toISOString(),
 			}),
 		);
@@ -339,114 +339,109 @@ export class LabelerServer {
 	/**
 	 * Handler for [com.atproto.label.queryLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/queryLabels.json).
 	 */
-	queryLabelsHandler: QueryHandler<InferInput<ComAtprotoLabelQueryLabels.mainSchema["params"]>> =
-		async (req, res) => {
-			await this.dbInitLock;
+	queryLabelsHandler: QueryHandler<ComAtprotoLabelQueryLabels.$params> = async (req, res) => {
+		await this.dbInitLock;
 
-			let uriPatterns: Array<string>;
-			if (!req.query.uriPatterns) {
-				uriPatterns = [];
-			} else if (typeof req.query.uriPatterns === "string") {
-				uriPatterns = [req.query.uriPatterns];
-			} else {
-				uriPatterns = req.query.uriPatterns || [];
-			}
+		let uriPatterns: Array<string>;
+		if (!req.query.uriPatterns) {
+			uriPatterns = [];
+		} else if (typeof req.query.uriPatterns === "string") {
+			uriPatterns = [req.query.uriPatterns];
+		} else {
+			uriPatterns = req.query.uriPatterns || [];
+		}
 
-			let sources: Array<string>;
-			if (!req.query.sources) {
-				sources = [];
-			} else if (typeof req.query.sources === "string") {
-				sources = [req.query.sources];
-			} else {
-				sources = req.query.sources || [];
-			}
+		let sources: Array<string>;
+		if (!req.query.sources) {
+			sources = [];
+		} else if (typeof req.query.sources === "string") {
+			sources = [req.query.sources];
+		} else {
+			sources = req.query.sources || [];
+		}
 
-			const cursor = parseInt(`${req.query.cursor || 0}`, 10);
-			if (cursor !== undefined && Number.isNaN(cursor)) {
-				throw new XRPCError({
-					status: 400,
-					error: "InvalidRequest",
-					description: "Cursor must be an integer",
-				});
-			}
-
-			const limit = parseInt(`${req.query.limit || 50}`, 10);
-			if (Number.isNaN(limit) || limit < 1 || limit > 250) {
-				throw new XRPCError({
-					status: 400,
-					error: "InvalidRequest",
-					description: "Limit must be an integer between 1 and 250",
-				});
-			}
-
-			const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
-				pattern = pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_");
-
-				const starIndex = pattern.indexOf("*");
-				if (starIndex === -1) return pattern;
-
-				if (starIndex !== pattern.length - 1) {
-					throw new XRPCError({
-						status: 400,
-						error: "InvalidRequest",
-						description: "Only trailing wildcards are supported in uriPatterns",
-					});
-				}
-				return pattern.slice(0, -1) + "%";
+		const cursor = parseInt(`${req.query.cursor || 0}`, 10);
+		if (cursor !== undefined && Number.isNaN(cursor)) {
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
+				description: "Cursor must be an integer",
 			});
+		}
 
-			const conditions: string[] = [];
-			const params: any[] = [];
+		const limit = parseInt(`${req.query.limit || 50}`, 10);
+		if (Number.isNaN(limit) || limit < 1 || limit > 250) {
+			throw new XRPCError({
+				status: 400,
+				error: "InvalidRequest",
+				description: "Limit must be an integer between 1 and 250",
+			});
+		}
 
-			if (patterns.length) {
-				conditions.push("(" + patterns.map(() => "uri LIKE ?").join(" OR ") + ")");
-				params.push(...patterns);
+		const patterns = uriPatterns.includes("*") ? [] : uriPatterns.map((pattern) => {
+			pattern = pattern.replaceAll(/%/g, "").replaceAll(/_/g, "\\_");
+
+			const starIndex = pattern.indexOf("*");
+			if (starIndex === -1) return pattern;
+
+			if (starIndex !== pattern.length - 1) {
+				throw new XRPCError({
+					status: 400,
+					error: "InvalidRequest",
+					description: "Only trailing wildcards are supported in uriPatterns",
+				});
 			}
+			return pattern.slice(0, -1) + "%";
+		});
 
-			if (sources.length) {
-				conditions.push(`src IN (${sources.map(() => "?").join(", ")})`);
-				params.push(...sources);
-			}
+		const conditions: string[] = [];
+		const params: any[] = [];
 
-			if (cursor) {
-				conditions.push("id > ?");
-				params.push(cursor);
-			}
+		if (patterns.length) {
+			conditions.push("(" + patterns.map(() => "uri LIKE ?").join(" OR ") + ")");
+			params.push(...patterns);
+		}
 
-			params.push(limit);
+		if (sources.length) {
+			conditions.push(`src IN (${sources.map(() => "?").join(", ")})`);
+			params.push(...sources);
+		}
 
-			const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-			const result = await this.db.execute({
-				sql: `
+		if (cursor) {
+			conditions.push("id > ?");
+			params.push(cursor);
+		}
+
+		params.push(limit);
+
+		const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+		const result = await this.db.execute({
+			sql: `
 				SELECT * FROM labels
 				${whereClause}
 				ORDER BY id ASC
 				LIMIT ?
 			`,
-				args: params,
-			});
+			args: params,
+		});
 
-			const rows = result.rows.map((row) => ({
-				id: Number(row.id),
-				src: row.src as Did,
-				uri: row.uri as LabelUri,
-				val: row.val as string,
-				neg: Boolean(row.neg),
-				cts: row.cts as string,
-				...(row.cid ? { cid: row.cid as string } : {}),
-				...(row.exp ? { exp: row.exp as string } : {}),
-				...(row.sig ? { sig: new Uint8Array(row.sig as ArrayBuffer) } : {}),
-			}));
-			const labels = rows.map(formatLabel);
+		const rows = result.rows.map((row) => ({
+			id: Number(row.id),
+			src: row.src as Did,
+			uri: row.uri as LabelUri,
+			val: row.val as string,
+			neg: Boolean(row.neg),
+			cts: row.cts as string,
+			...(row.cid ? { cid: row.cid as string } : {}),
+			...(row.exp ? { exp: row.exp as string } : {}),
+			...(row.sig ? { sig: new Uint8Array(row.sig as ArrayBuffer) } : {}),
+		}));
+		const labels = rows.map(formatLabel);
 
-			const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
+		const nextCursor = rows[rows.length - 1]?.id?.toString(10) || "0";
 
-			await res.send(
-				{ cursor: nextCursor, labels } satisfies InferXRPCBodyOutput<
-					ComAtprotoLabelQueryLabels.mainSchema["output"]
-				>,
-			);
-		};
+		await res.send({ cursor: nextCursor, labels } satisfies ComAtprotoLabelQueryLabels.$output);
+	};
 
 	/**
 	 * Handler for [com.atproto.label.subscribeLabels](https://github.com/bluesky-social/atproto/blob/main/lexicons/com/atproto/label/subscribeLabels.json).

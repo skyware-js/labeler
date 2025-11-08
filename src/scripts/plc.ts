@@ -1,5 +1,4 @@
 import type { ComAtprotoIdentitySignPlcOperation } from "@atcute/atproto";
-import { InferXRPCBodyInput } from "@atcute/lexicons";
 import { secp256k1 as k256 } from "@noble/curves/secp256k1";
 import { toString as ui8ToString } from "uint8arrays/to-string";
 import { formatDidKey, parsePrivateKey, SECP256K1_JWT_ALG } from "../util/crypto.js";
@@ -59,8 +58,7 @@ export async function plcSetupLabeler(options: PlcSetupLabelerOptions) {
 	const publicKey = k256.getPublicKey(privateKey);
 	const keyDid = formatDidKey(SECP256K1_JWT_ALG, publicKey);
 
-	const operation: InferXRPCBodyInput<ComAtprotoIdentitySignPlcOperation.mainSchema["input"]> =
-		{};
+	const operation: ComAtprotoIdentitySignPlcOperation.$input = {};
 
 	const credentials = await agent.get("com.atproto.identity.getRecommendedDidCredentials", {});
 
@@ -180,5 +178,5 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
  */
 export async function plcRequestToken(credentials: LoginCredentials): Promise<void> {
 	const { agent } = await loginAgent(credentials);
-	await agent.post("com.atproto.identity.requestPlcOperationSignature", { as: null });
+	await agent.post("com.atproto.identity.requestPlcOperationSignature", { as: "json" });
 }

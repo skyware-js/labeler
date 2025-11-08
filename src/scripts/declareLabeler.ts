@@ -1,7 +1,7 @@
 import "@atcute/bluesky/lexicons";
 import { ComAtprotoLabelDefs, ComAtprotoRepoPutRecord } from "@atcute/atproto";
 import { AppBskyLabelerService } from "@atcute/bluesky";
-import { InferXRPCBodyInput, is } from "@atcute/lexicons";
+import { is } from "@atcute/lexicons";
 import { loginAgent, LoginCredentials } from "./util.js";
 
 /**
@@ -41,15 +41,15 @@ export async function declareLabeler(
 	const record: AppBskyLabelerService.Main = {
 		$type: "app.bsky.labeler.service",
 		policies: { labelValues, labelValueDefinitions: labelDefinitions },
-		// We don't implement the com.atproto.moderation.createReport procedure,
-		// so need to disable reports:
+		// We don't implement com.atproto.moderation.createReport,
+		// so to disable receiving reports:
 		reasonTypes: [],
 		subjectTypes: [],
 		subjectCollections: [],
 		createdAt: new Date().toISOString(),
 	};
 
-	const data: InferXRPCBodyInput<ComAtprotoRepoPutRecord.mainSchema["input"]> = {
+	const data: ComAtprotoRepoPutRecord.$input = {
 		collection: "app.bsky.labeler.service",
 		rkey: "self",
 		repo: session.did,

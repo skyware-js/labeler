@@ -1,4 +1,4 @@
-import { encode as cborEncode, fromBytes, toBytes } from "@atcute/cbor";
+import { type Bytes, encode as cborEncode, fromBytes, toBytes } from "@atcute/cbor";
 import { isBytes } from "@atcute/lexicons/interfaces";
 import { k256Sign } from "./crypto.js";
 import type { FormattedLabel, Label, SignedLabel, UnsignedLabel } from "./types.js";
@@ -10,9 +10,9 @@ function formatLabelCbor(label: UnsignedLabel): UnsignedLabel {
 	return excludeNullish({ ...label, ver: LABEL_VERSION, neg: !!label.neg });
 }
 
-export type Signature = ArrayBuffer | Uint8Array | { $bytes: string };
+export type Signature = ArrayBuffer | Uint8Array | Bytes;
 
-function sigToBytes(sig?: Signature): { $bytes: string } | null {
+function sigToBytes(sig?: Signature): Bytes | null {
 	if (isBytes(sig)) {
 		return sig;
 	}

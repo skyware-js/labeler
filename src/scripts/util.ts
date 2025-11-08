@@ -1,6 +1,5 @@
 import type {} from "@atcute/bluesky";
 import type {} from "@atcute/atproto";
-
 import { AtpSessionData, Client, CredentialManager } from "@atcute/client";
 
 export interface LoginCredentials {
