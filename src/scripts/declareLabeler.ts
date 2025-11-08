@@ -1,4 +1,4 @@
-import "@atcute/bluesky/lexicons";
+import type {} from "@atcute/bluesky";
 import { ComAtprotoLabelDefs, ComAtprotoRepoPutRecord } from "@atcute/atproto";
 import { AppBskyLabelerService } from "@atcute/bluesky";
 import { is } from "@atcute/lexicons";
