@@ -178,5 +178,5 @@ export async function plcClearLabeler(options: PlcClearLabelerOptions) {
  */
 export async function plcRequestToken(credentials: LoginCredentials): Promise<void> {
 	const { agent } = await loginAgent(credentials);
-	await agent.post("com.atproto.identity.requestPlcOperationSignature", { as: "json" });
+	await agent.post("com.atproto.identity.requestPlcOperationSignature", { as: null });
 }
