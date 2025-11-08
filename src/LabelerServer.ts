@@ -511,9 +511,10 @@ export class LabelerServer {
 	/**
 	 * Handler for [tools.ozone.moderation.emitEvent](https://github.com/bluesky-social/atproto/blob/main/lexicons/tools/ozone/moderation/emitEvent.json).
 	 */
-	emitEventHandler: ProcedureHandler<
-		ToolsOzoneModerationEmitEvent.$output
-	> = async (req, res) => {
+	emitEventHandler: ProcedureHandler<ToolsOzoneModerationEmitEvent.$output> = async (
+		req,
+		res,
+	) => {
 		const actorDid = await this.parseAuthHeaderDid(req);
 		const authed = await this.auth(actorDid);
 		if (!authed) {
@@ -586,7 +587,7 @@ export class LabelerServer {
 				subjectBlobCids,
 				createdBy,
 				createdAt: new Date().toISOString(),
-			} satisfies ToolsOzoneModerationEmitEvent.$output
+			} satisfies ToolsOzoneModerationEmitEvent.$output,
 		);
 	};
 

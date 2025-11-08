@@ -1,9 +1,9 @@
 import { type Bytes, encode as cborEncode, fromBytes, toBytes } from "@atcute/cbor";
 import { isBytes } from "@atcute/lexicons/interfaces";
+import { isCanonicalResourceUri, isDid } from "@atcute/lexicons/syntax";
 import { k256Sign } from "./crypto.js";
 import type { FormattedLabel, SignedLabel, UnsignedLabel } from "./types.js";
 import { excludeNullish } from "./util.js";
-import { isCanonicalResourceUri, isDid } from "@atcute/lexicons/syntax";
 
 const LABEL_VERSION = 1;
 
